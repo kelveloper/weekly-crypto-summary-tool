@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Holding - Crypto Portfolio Tracker{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="text-center">Edit Holding</h3>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="symbol" class="form-label">Cryptocurrency Symbol</label>
+                        <input type="text" class="form-control" id="symbol" name="symbol" value="{{ holding.symbol }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="quantity" class="form-label">Quantity</label>
+                        <input type="number" step="0.00000001" class="form-control" id="quantity" name="quantity" value="{{ holding.quantity }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="purchase_price" class="form-label">Purchase Price (USD)</label>
+                        <input type="number" step="0.01" class="form-control" id="purchase_price" name="purchase_price" value="{{ holding.purchase_price }}" required>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">Update Holding</button>
+                        <a href="{{ url_for('portfolio') }}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

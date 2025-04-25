@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}Bitcoin Weekly MACD (12, 26, 9){% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">Bitcoin Weekly MACD Analysis</h2>
+    
+    {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+    {% else %}
+        <!-- Real-time Data -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h3 class="mb-0">Real-time Data</h3>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <h5>Current Price</h5>
+                        <p id="currentPrice" class="h3">Loading...</p>
+                    </div>
+                    <div class="col-md-3">
+                        <h5>MACD</h5>
+                        <p id="currentMACD" class="h3">Loading...</p>
+                    </div>
+                    <div class="col-md-3">
+                        <h5>Signal</h5>
+                        <p id="currentSignal" class="h3">Loading...</p>
+                    </div>
+                    <div class="col-md-3">
+                        <h5>Distance</h5>
+                        <p id="currentDistance" class="h3">Loading...</p>
+                    </div>
+                </div>
+                <p id="lastUpdate" class="text-muted mt-2">Last updated: Loading...</p>
+            </div>
+        </div>
+
+        <!-- Current Week Analysis -->
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h3 class="mb-0">Current Week Analysis</h3>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h4>Weekly Performance</h4>
+                        <div class="table-responsive">
+                            <table class="table">
+                                <tr>
+                                    <th>Price:</th>
+                                    <td>${{ "%.2f"|format(analysis.current_week_data.price) }}</td>
+                                </tr>
+                                <tr>
+                                    <th>MACD:</th>
+                                    <td>{{ "%.4f"|format(analysis.current_week_data.macd) }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Signal:</th>
+                                    <td>{{ "%.4f"|format(analysis.current_week_data.signal) }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Distance:</th>
+                                    <td class="{% if analysis.current_week_data.distance > 0 %}text-success{% else %}text-danger{% endif %}">
+                                        {{ "%.4f"|format(analysis.current_week_data.distance) }}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Trend:</th>
+                                    <td>
+                                        <span class="badge {% if analysis.current_week_data.distance > 0 %}bg-success{% else %}bg-danger{% endif %}">
+                                            {{ 'Bullish' if analysis.current_week_data.distance > 0 else 'Bearish' }}
+                                        </span>
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h4>Signal Analysis</h4>
+                        <div class="alert {% if analysis.current_week_data.distance > 0 %}alert-success{% else %}alert-danger{% endif %}">
+                            <h5>Current Status:</h5>
+                            <p>
+                                {% if analysis.current_week_data.distance > 0 %}
+                                    {% if analysis.previous_week_data.distance <= 0 %}
+                                        <strong>Golden Cross Alert!</strong> MACD has crossed above the signal line.
+                                    {% else %}
+                                        Bullish trend continuing. MACD remains above signal line.
+                                    {% endif %}
+                                {% else %}
+                                    {% if analysis.previous_week_data.distance > 0 %}
+                                        <strong>Death Cross Alert!</strong> MACD has crossed below the signal line.
+                                    {% else %}
+                                        Bearish trend continuing. MACD remains below signal line.
+                                    {% endif %}
+                                {% endif %}
+                            </p>
+                            <h5>Momentum:</h5>
+                            <p>
+                                {% if analysis.current_week_data.distance > analysis.previous_week_data.distance %}
+                                    Momentum is increasing (Distance widening)
+                                {% else %}
+                                    Momentum is decreasing (Distance narrowing)
+                                {% endif %}
+                            </p>
+                            <h5>Recommendation:</h5>
+                            <p>{{ analysis.recommendation }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Historical Analysis -->
+        <div class="card mb-4">
+            <div class="card-header bg-info text-white">
+                <h3 class="mb-0">Historical Analysis (2025)</h3>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Price</th>
+                                <th>MACD</th>
+                                <th>Signal</th>
+                                <th>Distance</th>
+                                <th>Trend</th>
+                                <th>Signal Event</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for week in weekly_data %}
+                            <tr>
+                                <td>{{ week.date.strftime('%Y-%m-%d') }}</td>
+                                <td>${{ "%.2f"|format(week.price) }}</td>
+                                <td>{{ "%.4f"|format(week.macd) }}</td>
+                                <td>{{ "%.4f"|format(week.signal) }}</td>
+                                <td class="{% if week.distance > 0 %}text-success{% else %}text-danger{% endif %}">
+                                    {{ "%.4f"|format(week.distance) }}
+                                </td>
+                                <td>
+                                    <span class="badge {% if week.distance > 0 %}bg-success{% else %}bg-danger{% endif %}">
+                                        {{ 'Bullish' if week.distance > 0 else 'Bearish' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if loop.index > 1 %}
+                                        {% if week.distance > 0 and weekly_data[loop.index0 - 1].distance <= 0 %}
+                                            <span class="badge bg-success">Golden Cross</span>
+                                        {% elif week.distance <= 0 and weekly_data[loop.index0 - 1].distance > 0 %}
+                                            <span class="badge bg-danger">Death Cross</span>
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+function updateRealtimeData() {
+    fetch('/get_realtime_data')
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                console.error('Error:', data.error);
+                return;
+            }
+            
+            // Update the display
+            document.getElementById('currentPrice').textContent = '$' + data.price.toFixed(2);
+            document.getElementById('currentMACD').textContent = data.macd.toFixed(4);
+            document.getElementById('currentSignal').textContent = data.signal.toFixed(4);
+            document.getElementById('currentDistance').textContent = data.distance.toFixed(4);
+            document.getElementById('lastUpdate').textContent = 'Last updated: ' + data.timestamp;
+            
+            // Add color indicators
+            const distanceElement = document.getElementById('currentDistance');
+            const macdElement = document.getElementById('currentMACD');
+            const signalElement = document.getElementById('currentSignal');
+            
+            if (data.distance > 0) {
+                distanceElement.className = 'h3 text-success';
+                macdElement.className = 'h3 text-success';
+                signalElement.className = 'h3';
+            } else {
+                distanceElement.className = 'h3 text-danger';
+                macdElement.className = 'h3 text-danger';
+                signalElement.className = 'h3';
+            }
+        })
+        .catch(error => console.error('Error fetching real-time data:', error));
+}
+
+// Update every 1 minute (60000 milliseconds)
+setInterval(updateRealtimeData, 60000);
+// Initial update
+updateRealtimeData();
+</script>
+{% endblock %} 
