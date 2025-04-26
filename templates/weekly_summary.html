@@ -9,38 +9,10 @@
     {% if error %}
         <div class="alert alert-danger">{{ error }}</div>
     {% else %}
-        <!-- Real-time Data -->
-        <div class="card mb-4">
-            <div class="card-header bg-primary text-white">
-                <h3 class="mb-0">Real-time Data</h3>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-3">
-                        <h5>Current Price</h5>
-                        <p id="currentPrice" class="h3">Loading...</p>
-                    </div>
-                    <div class="col-md-3">
-                        <h5>MACD</h5>
-                        <p id="currentMACD" class="h3">Loading...</p>
-                    </div>
-                    <div class="col-md-3">
-                        <h5>Signal</h5>
-                        <p id="currentSignal" class="h3">Loading...</p>
-                    </div>
-                    <div class="col-md-3">
-                        <h5>Distance</h5>
-                        <p id="currentDistance" class="h3">Loading...</p>
-                    </div>
-                </div>
-                <p id="lastUpdate" class="text-muted mt-2">Last updated: Loading...</p>
-            </div>
-        </div>
-
         <!-- Current Week Analysis -->
-        <div class="card mb-4">
+        <div class="card mb-4" id="currentWeekCard">
             <div class="card-header bg-success text-white">
-                <h3 class="mb-0">Current Week Analysis</h3>
+                <h3 class="mb-0">Selected Week Analysis</h3>
             </div>
             <div class="card-body">
                 <div class="row">
@@ -49,27 +21,31 @@
                         <div class="table-responsive">
                             <table class="table">
                                 <tr>
+                                    <th>Date:</th>
+                                    <td id="selectedDate">{{ analysis.current_week_data.date.strftime('%Y-%m-%d') }}</td>
+                                </tr>
+                                <tr>
                                     <th>Price:</th>
-                                    <td>${{ "%.2f"|format(analysis.current_week_data.price) }}</td>
+                                    <td id="selectedPrice">${{ "%.2f"|format(analysis.current_week_data.price) }}</td>
                                 </tr>
                                 <tr>
                                     <th>MACD:</th>
-                                    <td>{{ "%.4f"|format(analysis.current_week_data.macd) }}</td>
+                                    <td id="selectedMACD">{{ "%.4f"|format(analysis.current_week_data.macd) }}</td>
                                 </tr>
                                 <tr>
                                     <th>Signal:</th>
-                                    <td>{{ "%.4f"|format(analysis.current_week_data.signal) }}</td>
+                                    <td id="selectedSignal">{{ "%.4f"|format(analysis.current_week_data.signal) }}</td>
                                 </tr>
                                 <tr>
                                     <th>Distance:</th>
-                                    <td class="{% if analysis.current_week_data.distance > 0 %}text-success{% else %}text-danger{% endif %}">
+                                    <td id="selectedDistance" class="{% if analysis.current_week_data.distance > 0 %}text-success{% else %}text-danger{% endif %}">
                                         {{ "%.4f"|format(analysis.current_week_data.distance) }}
                                     </td>
                                 </tr>
                                 <tr>
                                     <th>Trend:</th>
                                     <td>
-                                        <span class="badge {% if analysis.current_week_data.distance > 0 %}bg-success{% else %}bg-danger{% endif %}">
+                                        <span id="selectedTrend" class="badge {% if analysis.current_week_data.distance > 0 %}bg-success{% else %}bg-danger{% endif %}">
                                             {{ 'Bullish' if analysis.current_week_data.distance > 0 else 'Bearish' }}
                                         </span>
                                     </td>
@@ -79,9 +55,9 @@
                     </div>
                     <div class="col-md-6">
                         <h4>Signal Analysis</h4>
-                        <div class="alert {% if analysis.current_week_data.distance > 0 %}alert-success{% else %}alert-danger{% endif %}">
+                        <div id="signalAnalysis" class="alert {% if analysis.current_week_data.distance > 0 %}alert-success{% else %}alert-danger{% endif %}">
                             <h5>Current Status:</h5>
-                            <p>
+                            <p id="selectedStatus">
                                 {% if analysis.current_week_data.distance > 0 %}
                                     {% if analysis.previous_week_data.distance <= 0 %}
                                         <strong>Golden Cross Alert!</strong> MACD has crossed above the signal line.
@@ -97,7 +73,7 @@
                                 {% endif %}
                             </p>
                             <h5>Momentum:</h5>
-                            <p>
+                            <p id="selectedMomentum">
                                 {% if analysis.current_week_data.distance > analysis.previous_week_data.distance %}
                                     Momentum is increasing (Distance widening)
                                 {% else %}
@@ -105,7 +81,7 @@
                                 {% endif %}
                             </p>
                             <h5>Recommendation:</h5>
-                            <p>{{ analysis.recommendation }}</p>
+                            <p id="selectedRecommendation">{{ analysis.recommendation }}</p>
                         </div>
                     </div>
                 </div>
@@ -133,7 +109,13 @@
                         </thead>
                         <tbody>
                             {% for week in weekly_data %}
-                            <tr>
+                            <tr class="historical-row" style="cursor: pointer;" 
+                                data-date="{{ week.date.strftime('%Y-%m-%d') }}"
+                                data-price="{{ "%.2f"|format(week.price) }}"
+                                data-macd="{{ "%.4f"|format(week.macd) }}"
+                                data-signal="{{ "%.4f"|format(week.signal) }}"
+                                data-distance="{{ "%.4f"|format(week.distance) }}"
+                                data-index="{{ loop.index0 }}">
                                 <td>{{ week.date.strftime('%Y-%m-%d') }}</td>
                                 <td>${{ "%.2f"|format(week.price) }}</td>
                                 <td>{{ "%.4f"|format(week.macd) }}</td>
@@ -166,43 +148,80 @@
 </div>
 
 <script>
-function updateRealtimeData() {
-    fetch('/get_realtime_data')
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                console.error('Error:', data.error);
-                return;
+document.addEventListener('DOMContentLoaded', function() {
+    const weeklyData = {{ weekly_data|tojson|safe }};
+    
+    document.querySelectorAll('.historical-row').forEach(row => {
+        row.addEventListener('click', function() {
+            const index = parseInt(this.dataset.index);
+            const currentData = weeklyData[index];
+            const previousData = index > 0 ? weeklyData[index - 1] : null;
+            
+            // Update Weekly Performance
+            document.getElementById('selectedDate').textContent = this.dataset.date;
+            document.getElementById('selectedPrice').textContent = '$' + this.dataset.price;
+            document.getElementById('selectedMACD').textContent = this.dataset.macd;
+            document.getElementById('selectedSignal').textContent = this.dataset.signal;
+            
+            const distance = parseFloat(this.dataset.distance);
+            const distanceElement = document.getElementById('selectedDistance');
+            distanceElement.textContent = this.dataset.distance;
+            distanceElement.className = distance > 0 ? 'text-success' : 'text-danger';
+            
+            const trendElement = document.getElementById('selectedTrend');
+            trendElement.textContent = distance > 0 ? 'Bullish' : 'Bearish';
+            trendElement.className = 'badge ' + (distance > 0 ? 'bg-success' : 'bg-danger');
+            
+            // Update Signal Analysis
+            const signalAnalysis = document.getElementById('signalAnalysis');
+            signalAnalysis.className = 'alert ' + (distance > 0 ? 'alert-success' : 'alert-danger');
+            
+            let status = '';
+            let momentum = '';
+            let recommendation = '';
+            
+            if (previousData) {
+                const prevDistance = previousData.distance;
+                
+                if (distance > 0) {
+                    if (prevDistance <= 0) {
+                        status = '<strong>Golden Cross Alert!</strong> MACD has crossed above the signal line.';
+                        recommendation = '🚀 PERFECT BUY SIGNAL! 🚀 This is the start of a bull market! MACD has crossed above signal line. This is your chance to buy aggressively as we\'re likely entering a strong uptrend.';
+                    } else {
+                        status = 'Bullish trend continuing. MACD remains above signal line.';
+                        if (distance > prevDistance) {
+                            recommendation = '📈 HOLD STRONG! 📈 Bullish trend is strengthening. Keep your positions as the momentum is increasing. This is not the time to sell.';
+                        } else {
+                            recommendation = '⚠️ CAUTION: Reversal Signal! ⚠️ Distance is decreasing from previous week. This could indicate we\'re reaching a top. Consider taking profits or selling a portion of your holdings. Perfect time to secure some gains!';
+                        }
+                    }
+                } else {
+                    if (prevDistance > 0) {
+                        status = '<strong>Death Cross Alert!</strong> MACD has crossed below the signal line.';
+                        recommendation = '😢 BEAR MARKET ALERT! 😢 MACD has crossed below signal line. We\'re entering a bear market phase. Expect downward pressure for several weeks. This is not the time to buy.';
+                    } else {
+                        status = 'Bearish trend continuing. MACD remains below signal line.';
+                        if (distance < prevDistance) {
+                            recommendation = '💪 ACCUMULATION TIME! 💪 Bearish trend is strengthening. This is a great opportunity to start accumulating. Buy in small amounts as prices may continue to drop.';
+                        } else {
+                            recommendation = '🎯 STRONG BUY SIGNAL! 🎯 Distance is becoming less negative. This indicates a potential reversal. Start buying more aggressively as we might be approaching the bottom. Perfect time to increase your position!';
+                        }
+                    }
+                }
+                
+                momentum = distance > prevDistance ? 
+                    'Momentum is increasing (Distance widening)' : 
+                    'Momentum is decreasing (Distance narrowing)';
             }
             
-            // Update the display
-            document.getElementById('currentPrice').textContent = '$' + data.price.toFixed(2);
-            document.getElementById('currentMACD').textContent = data.macd.toFixed(4);
-            document.getElementById('currentSignal').textContent = data.signal.toFixed(4);
-            document.getElementById('currentDistance').textContent = data.distance.toFixed(4);
-            document.getElementById('lastUpdate').textContent = 'Last updated: ' + data.timestamp;
+            document.getElementById('selectedStatus').innerHTML = status;
+            document.getElementById('selectedMomentum').textContent = momentum;
+            document.getElementById('selectedRecommendation').textContent = recommendation;
             
-            // Add color indicators
-            const distanceElement = document.getElementById('currentDistance');
-            const macdElement = document.getElementById('currentMACD');
-            const signalElement = document.getElementById('currentSignal');
-            
-            if (data.distance > 0) {
-                distanceElement.className = 'h3 text-success';
-                macdElement.className = 'h3 text-success';
-                signalElement.className = 'h3';
-            } else {
-                distanceElement.className = 'h3 text-danger';
-                macdElement.className = 'h3 text-danger';
-                signalElement.className = 'h3';
-            }
-        })
-        .catch(error => console.error('Error fetching real-time data:', error));
-}
-
-// Update every 1 minute (60000 milliseconds)
-setInterval(updateRealtimeData, 60000);
-// Initial update
-updateRealtimeData();
+            // Scroll to the top of the analysis
+            document.getElementById('currentWeekCard').scrollIntoView({ behavior: 'smooth' });
+        });
+    });
+});
 </script>
 {% endblock %} 

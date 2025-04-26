@@ -12,6 +12,7 @@ import random
 from technical_analysis import CryptoAnalyzer
 import requests
 import traceback
+import ta
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
@@ -402,176 +403,62 @@ def edit_holding(id):
     
     return render_template('edit_holding.html', holding=holding)
 
-@app.route('/get_realtime_data')
-@login_required
-def get_realtime_data():
-    try:
-        analyzer = CryptoAnalyzer()
-        # Get current price
-        current_price = analyzer.get_current_price('BTC')
-        
-        if current_price is None:
-            return jsonify({'error': 'Unable to fetch current price'})
-            
-        # Get historical data for MACD calculation
-        data = analyzer.fetch_historical_data('BTC')
-        if data is None or len(data) < 180:  # Need at least 180 days of data
-            return jsonify({'error': 'Not enough historical data for analysis'})
-            
-        # Convert to DataFrame
-        df = pd.DataFrame(data)
-        if 'timestamp' in df.columns:
-            df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
-        else:
-            df['date'] = pd.to_datetime(df['date'])
-        df.set_index('date', inplace=True)
-        
-        # Set start date to January 1, 2025
-        start_date = pd.Timestamp('2025-01-01')
-        df = df[df.index >= start_date]
-        
-        # Get all Mondays
-        mondays = pd.date_range(start=start_date, end=pd.Timestamp.now(), freq='W-MON')
-        if len(mondays) < 35:  # Need at least 35 weeks for full MACD calculation
-            return jsonify({'error': 'Not enough weekly data points for MACD calculation'})
-        
-        # Create a new DataFrame with only Monday data
-        weekly_data = pd.DataFrame(index=mondays)
-        weekly_data['close'] = df['price'].resample('W-MON').last()
-        
-        # Calculate EMAs using TradingView's formula
-        def calculate_ema(data, length):
-            alpha = 2 / (length + 1)
-            ema = pd.Series(index=data.index, dtype=float)
-            
-            # Initialize with first value
-            ema.iloc[0] = data.iloc[0]
-            
-            # Calculate EMA for remaining periods
-            for i in range(1, len(data)):
-                ema.iloc[i] = data.iloc[i] * alpha + ema.iloc[i-1] * (1 - alpha)
-            
-            return ema
-        
-        # Calculate MACD using TradingView's method
-        # First calculate the 12 and 26 period EMAs
-        fast_ema = calculate_ema(weekly_data, 12)
-        slow_ema = calculate_ema(weekly_data, 26)
-        
-        # Calculate MACD line (difference between EMAs)
-        macd = fast_ema - slow_ema
-        
-        # Calculate Signal line (9-period EMA of MACD)
-        signal = calculate_ema(macd, 9)
-        
-        # Get current values (safely)
-        if len(macd) > 0 and len(signal) > 0:
-            current_macd = macd.iloc[-1]
-            current_signal = signal.iloc[-1]
-            current_distance = current_macd - current_signal
-            
-            # Print current values for debugging
-            current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            print(f"\n[{current_time}] Current Values:")
-            print(f"Bitcoin Price: ${current_price:.2f}")
-            print(f"MACD: {current_macd:.4f}")
-            print(f"Signal: {current_signal:.4f}")
-            print(f"Distance: {current_distance:.4f}")
-            
-            return jsonify({
-                'price': current_price,
-                'macd': float(current_macd),
-                'signal': float(current_signal),
-                'distance': float(current_distance),
-                'timestamp': current_time
-            })
-        else:
-            return jsonify({'error': 'Unable to calculate current MACD values'})
-            
-    except Exception as e:
-        print(f"Error getting real-time data: {str(e)}")
-        traceback.print_exc()  # Print full traceback for debugging
-        return jsonify({'error': str(e)})
-
 @app.route('/weekly_summary')
 @login_required
 def weekly_summary():
     try:
         analyzer = CryptoAnalyzer()
         
-        # Get historical data
+        # Get historical data (2 years)
         data = analyzer.fetch_historical_data('BTC')
         if data is None:
             return render_template('weekly_summary.html', error="No data available")
             
         # Convert to DataFrame
         df = pd.DataFrame(data)
-        if 'timestamp' in df.columns:
-            df['date'] = pd.to_datetime(df['timestamp'], unit='ms')
-            df['price'] = df['price'].astype(float)
-        else:
-            df['date'] = pd.to_datetime(df['date'])
-            df['price'] = df['price'].astype(float)
+        df['date'] = pd.to_datetime(df['date'])
+        df['price'] = df['price'].astype(float)
         df.set_index('date', inplace=True)
         
-        # Get the closing price of each week (Sunday)
-        weekly_data = df['price'].resample('W-SUN').last()
+        # Get Saturday data for MACD analysis (using all data for calculation)
+        saturday_data = df[df.index.weekday == 5]  # 5 is Saturday
+        weekly_data = saturday_data['price'].resample('W-SAT').last()
         
-        # Convert Sunday dates to Monday dates
-        weekly_data.index = weekly_data.index - pd.Timedelta(days=6)
+        # Convert Saturday dates to Monday dates for display
+        weekly_data.index = weekly_data.index - pd.Timedelta(days=5)
         
-        # Calculate EMAs using TradingView's formula
-        def calculate_ema(data, length):
-            alpha = 2 / (length + 1)
+        # Calculate EMAs using TradingView's exact method
+        def calculate_tv_ema(data, period):
+            alpha = 2 / (period + 1)  # TradingView's multiplier
             ema = pd.Series(index=data.index, dtype=float)
             
-            # Initialize with first value
-            ema.iloc[0] = data.iloc[0]
+            # Initialize with SMA (TradingView's method)
+            ema.iloc[:period] = data.iloc[:period].mean()
             
-            # Calculate EMA for remaining periods
-            for i in range(1, len(data)):
-                ema.iloc[i] = data.iloc[i] * alpha + ema.iloc[i-1] * (1 - alpha)
+            # Calculate EMA using TradingView's multiplier
+            for i in range(period, len(data)):
+                ema.iloc[i] = (data.iloc[i] * alpha) + (ema.iloc[i-1] * (1 - alpha))
             
             return ema
+
+        # Calculate MACD components using TradingView's method (using all data)
+        ema12 = calculate_tv_ema(weekly_data, 12)
+        ema26 = calculate_tv_ema(weekly_data, 26)
+        macd_line = ema12 - ema26
+        signal_line = calculate_tv_ema(macd_line, 9)
         
-        # Calculate MACD using TradingView's method
-        # First calculate the 12 and 26 period EMAs
-        fast_ema = calculate_ema(weekly_data, 12)
-        slow_ema = calculate_ema(weekly_data, 26)
+        # Filter for data from April 2024 onwards for display
+        display_start = '2024-04'
+        weekly_data_display = weekly_data[display_start:]
+        macd_line_display = macd_line[display_start:]
+        signal_line_display = signal_line[display_start:]
         
-        # Calculate MACD line (difference between EMAs)
-        macd = fast_ema - slow_ema
-        
-        # Calculate Signal line (9-period EMA of MACD)
-        signal = calculate_ema(macd, 9)
-        
-        # Print weekly analysis
-        print("\nWeekly MACD Analysis:")
-        print("=" * 100)
-        print(f"{'Date':<15} {'Price':<15} {'MACD':<15} {'Signal':<15} {'Distance':<15} {'Trend':<10}")
-        print("-" * 100)
-        
-        for i in range(len(weekly_data)):
-            date = weekly_data.index[i]
-            price = weekly_data.iloc[i]
-            macd_value = macd.iloc[i]
-            signal_value = signal.iloc[i]
-            distance = macd_value - signal_value
-            trend = "Bullish" if distance > 0 else "Bearish"
-            
-            print(f"{date.strftime('%Y-%m-%d'):<15} ${price:>10.2f} {macd_value:>14.4f} {signal_value:>14.4f} {distance:>14.4f} {trend:>10}")
-        
-        print("=" * 100)
-        
-        # Create weekly data list for template
         weekly_data_list = []
-        previous_distance = None
-        
-        for i in range(len(weekly_data)):
-            date = weekly_data.index[i]
-            price = weekly_data.iloc[i]
-            macd_value = macd.iloc[i]
-            signal_value = signal.iloc[i]
+        for i in range(len(weekly_data_display)):
+            date = weekly_data_display.index[i]
+            price = weekly_data_display.iloc[i]
+            macd_value = macd_line_display.iloc[i]
+            signal_value = signal_line_display.iloc[i]
             distance = macd_value - signal_value
             
             weekly_data_list.append({
@@ -579,33 +466,30 @@ def weekly_summary():
                 'price': price,
                 'macd': macd_value,
                 'signal': signal_value,
-                'distance': distance,
-                'previous_distance': previous_distance
+                'distance': distance
             })
-            previous_distance = distance
-
+        
         # Get current week's data
         current_week = weekly_data_list[-1]
         previous_week = weekly_data_list[-2] if len(weekly_data_list) > 1 else None
         
-        # Generate recommendation based on current trend and momentum
+        # Generate recommendation
         recommendation = ""
         if current_week['distance'] > 0:
             if previous_week and previous_week['distance'] <= 0:
-                recommendation = "Strong Buy Signal: Golden Cross detected. MACD has crossed above the signal line, indicating a potential upward trend."
+                recommendation = "Strong Buy Signal: MACD crossed above signal line"
             elif current_week['distance'] > previous_week['distance']:
-                recommendation = "Buy/Hold: Bullish trend strengthening. MACD distance from signal line is increasing."
+                recommendation = "Buy/Hold: Bullish trend strengthening"
             else:
-                recommendation = "Hold: Bullish trend continuing but momentum may be slowing. Monitor for potential trend reversal."
+                recommendation = "Hold: Bullish trend but momentum slowing"
         else:
             if previous_week and previous_week['distance'] > 0:
-                recommendation = "Strong Sell Signal: Death Cross detected. MACD has crossed below the signal line, indicating a potential downward trend."
+                recommendation = "Strong Sell Signal: MACD crossed below signal line"
             elif current_week['distance'] < previous_week['distance']:
-                recommendation = "Sell/Hold: Bearish trend strengthening. MACD distance from signal line is increasing."
+                recommendation = "Sell/Hold: Bearish trend strengthening"
             else:
-                recommendation = "Hold: Bearish trend continuing but momentum may be slowing. Monitor for potential trend reversal."
+                recommendation = "Hold: Bearish trend but momentum slowing"
 
-        # Create analysis object for template
         analysis = {
             'current_week_data': current_week,
             'previous_week_data': previous_week,
@@ -617,8 +501,6 @@ def weekly_summary():
                              weekly_data=weekly_data_list)
                              
     except Exception as e:
-        print(f"Error in weekly_summary: {str(e)}")
-        traceback.print_exc()
         return render_template('weekly_summary.html', error=str(e))
 
 if __name__ == '__main__':
