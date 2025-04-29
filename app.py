@@ -73,7 +73,7 @@ def load_user(user_id):
 def index():
     if current_user.is_authenticated:
         return redirect(url_for('portfolio'))
-    return redirect(url_for('register'))
+    return redirect(url_for('login'))
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -85,32 +85,32 @@ def register():
         
         # Validate username format
         if not re.match(r'^[a-zA-Z0-9_]{3,20}$', username):
-            flash('Username must be 3-20 characters long and can only contain letters, numbers, and underscores')
+            flash('Username must be 3-20 characters long and can only contain letters, numbers, and underscores', 'error')
             return redirect(url_for('register'))
         
         # Validate password strength
         if not re.match(r'^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}$', password):
-            flash('Password must be at least 8 characters long and contain at least one number, one uppercase and one lowercase letter')
+            flash('Password must be at least 8 characters long and contain at least one number, one uppercase and one lowercase letter', 'error')
             return redirect(url_for('register'))
         
         # Check password confirmation
         if password != confirm_password:
-            flash('Passwords do not match')
+            flash('Passwords do not match', 'error')
             return redirect(url_for('register'))
         
         # Check if username exists
         if User.query.filter_by(username=username).first():
-            flash('Username already exists')
+            flash('Username already exists', 'error')
             return redirect(url_for('register'))
         
         # Check if email exists
         if User.query.filter_by(email=email).first():
-            flash('Email already exists')
+            flash('Email already exists', 'error')
             return redirect(url_for('register'))
         
         # Validate email format
         if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
-            flash('Invalid email format')
+            flash('Invalid email format', 'error')
             return redirect(url_for('register'))
         
         # Create new user
@@ -119,8 +119,12 @@ def register():
         db.session.add(user)
         db.session.commit()
         
-        flash('Registration successful! Please login.')
-        return redirect(url_for('login'))
+        # Log the user in automatically
+        login_user(user)
+        
+        # Show success message and redirect to portfolio
+        flash('Registration successful!', 'success')
+        return redirect(url_for('portfolio'))
     
     return render_template('register.html')
 
@@ -130,20 +134,29 @@ def login():
         username = request.form['username']
         password = request.form['password']
         
-        user = User.query.filter_by(username=username).first()
-        if user and user.check_password(password):
-            login_user(user)
-            # Always redirect to portfolio page after login
-            return redirect(url_for('portfolio'))
+        # Only show error if both fields are filled
+        if username and password:
+            user = User.query.filter_by(username=username).first()
+            if user and user.check_password(password):
+                login_user(user)
+                return redirect(url_for('portfolio'))
+            else:
+                flash('Invalid username or password', 'error')
         else:
-            flash('Invalid username or password')
+            flash('Please enter both username and password', 'error')
+        return redirect(url_for('login'))
     return render_template('login.html')
+
+@login_manager.unauthorized_handler
+def unauthorized():
+    flash('Please log in to access this page', 'error')
+    return redirect(url_for('login'))
 
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
-    return redirect(url_for('index'))
+    return redirect(url_for('login'))
 
 @app.route('/portfolio')
 @login_required
@@ -158,64 +171,60 @@ def portfolio():
             .order_by(Portfolio.transaction_date.desc())\
             .paginate(page=page, per_page=per_page, error_out=False)
         
+        # Get all transactions for holdings calculation in reverse chronological order
+        all_transactions = Portfolio.query.filter_by(user_id=current_user.id)\
+            .order_by(Portfolio.transaction_date.desc())\
+            .all()
+        
         # Calculate current holdings
         holdings = {}
-        for transaction in transactions.items:
+        # Calculate BTC total investment separately
+        btc_total_investment = 0
+        btc_quantity = 0.0  # Explicitly set to 0.0
+        # Calculate total initial investment by summing all transaction totals
+        total_initial_investment = sum(transaction.transaction_total for transaction in all_transactions)
+        
+        # Group transactions by symbol
+        transactions_by_symbol = {}
+        for transaction in all_transactions:
             symbol = transaction.symbol
-            if symbol not in holdings:
-                holdings[symbol] = {
-                    'quantity': 0,
-                    'total_cost': 0,
-                    'average_price': 0,
-                    'current_price': 0,
-                    'total_value': 0,
-                    'profit_loss': 0,
-                    'profit_loss_percentage': 0
-                }
+            if symbol not in transactions_by_symbol:
+                transactions_by_symbol[symbol] = []
+            transactions_by_symbol[symbol].append(transaction)
+        
+        # Calculate quantities for each symbol
+        for symbol, transactions in transactions_by_symbol.items():
+            # Sort transactions by date (oldest first)
+            transactions.sort(key=lambda x: x.transaction_date)
             
-            if transaction.transaction_type == 'buy':
-                holdings[symbol]['quantity'] += transaction.quantity
-                holdings[symbol]['total_cost'] += transaction.quantity * transaction.purchase_price
-            else:  # sell
-                holdings[symbol]['quantity'] -= transaction.quantity
-                holdings[symbol]['total_cost'] -= transaction.quantity * transaction.purchase_price
+            running_quantity = 0.0
+            for transaction in transactions:
+                # Simply add the transaction quantity (negative for sells, positive for buys)
+                running_quantity += transaction.transaction_quantity
+            
+            # Store the final quantity
+            if running_quantity > 0:
+                holdings[symbol] = {
+                    'quantity': running_quantity,
+                    'total_cost': sum(t.transaction_total for t in transactions),
+                    'average_price': sum(t.transaction_total for t in transactions) / running_quantity
+                }
         
         # Remove holdings with zero quantity
         holdings = {k: v for k, v in holdings.items() if v['quantity'] > 0}
         
-        # Calculate current values and profit/loss
-        total_portfolio_value = 0
-        total_profit_loss = 0
-        for symbol, data in holdings.items():
-            try:
-                # Get current price from Alpha Vantage
-                url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}USD&apikey={ALPHA_VANTAGE_API_KEY}"
-                response = requests.get(url)
-                if response.status_code == 200:
-                    quote = response.json().get('Global Quote', {})
-                    current_price = float(quote.get('05. price', 0))
-                    data['current_price'] = current_price
-                    data['total_value'] = data['quantity'] * current_price
-                    data['average_price'] = data['total_cost'] / data['quantity']
-                    data['profit_loss'] = data['total_value'] - data['total_cost']
-                    data['profit_loss_percentage'] = (data['profit_loss'] / data['total_cost']) * 100
-                    
-                    total_portfolio_value += data['total_value']
-                    total_profit_loss += data['profit_loss']
-            except Exception as e:
-                print(f"Error getting price for {symbol}: {str(e)}")
-                continue
-        
-        # Sort holdings by total value (descending)
-        holdings = dict(sorted(holdings.items(), key=lambda x: x[1]['total_value'], reverse=True))
+        # Get BTC specific values
+        if 'BTC' in holdings:
+            btc_quantity = holdings['BTC']['quantity']
+            btc_total_investment = holdings['BTC']['total_cost']
         
         return render_template('portfolio.html', 
                              transactions=transactions,
                              holdings=holdings,
-                             total_portfolio_value=total_portfolio_value,
-                             total_profit_loss=total_profit_loss)
+                             total_initial_investment=total_initial_investment,
+                             btc_total_investment=btc_total_investment,
+                             btc_quantity=btc_quantity)
     except Exception as e:
-        print(f"Error loading portfolio: {str(e)}")
         flash('Error loading portfolio. Please try again later.', 'error')
         return redirect(url_for('index'))
 
@@ -240,6 +249,14 @@ def import_csv():
         content = file.read().decode('utf-8')
         lines = content.split('\n')
         
+        # Print file information
+        print("\n=== CSV File Information ===")
+        print(f"Total lines in file: {len(lines)}")
+        print("\nFirst 5 lines:")
+        for i, line in enumerate(lines[:5], 1):
+            print(f"Line {i}: {line.strip()}")
+        print("=======================\n")
+        
         # Check for existing transactions
         existing_transactions = set()
         for transaction in Portfolio.query.filter_by(user_id=current_user.id).all():
@@ -263,6 +280,8 @@ def import_csv():
                     symbol = parts[3].strip()
                     quantity = float(parts[4].strip())
                     price = float(parts[6].replace('$', '').replace(',', '').strip())
+                    # Get the total from the "Total (inclusive of fees and/or spread)" column
+                    total = float(parts[8].replace('$', '').replace(',', '').strip())
                     
                     # Check if transaction already exists
                     transaction_key = (transaction_id, symbol, quantity, price)
@@ -270,26 +289,33 @@ def import_csv():
                         duplicate_count += 1
                         continue
                     
+                    # Parse the date properly
+                    try:
+                        transaction_date = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S UTC').date()
+                    except ValueError:
+                        # Try alternative format if the first one fails
+                        transaction_date = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S').date()
+                    
                     # Create a new portfolio entry
                     holding = Portfolio(
                         user_id=current_user.id,
                         symbol=symbol,
-                        purchase_date=datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S UTC').date(),
+                        purchase_date=transaction_date,
                         purchase_price=price,
                         quantity=quantity,
                         transaction_type=transaction_type,
                         transaction_id=transaction_id,
-                        transaction_date=datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S UTC').date(),
+                        transaction_date=transaction_date,
                         transaction_price=price,
                         transaction_quantity=quantity,
                         transaction_fee=0.0,  # Default to 0 if not available
-                        transaction_total=price * quantity
+                        transaction_total=total
                     )
                     new_transactions.append(holding)
-                    print(f"Preparing to add transaction: {holding.symbol} - {holding.quantity}")
+                    print(f"Found new transaction: {holding.symbol} - {holding.quantity} @ ${holding.purchase_price} on {holding.transaction_date}")
             except Exception as e:
-                print(f"Error processing line: {line}")
-                print(f"Error details: {str(e)}")
+                print(f"Error processing line: {str(e)}")
+                print(f"Problematic line: {line}")
                 continue
         
         if duplicate_count > 0:
@@ -299,9 +325,11 @@ def import_csv():
             for holding in new_transactions:
                 db.session.add(holding)
             db.session.commit()
+            print(f"Successfully imported {len(new_transactions)} new transactions")
             flash(f'Successfully imported {len(new_transactions)} new transactions!', 'success')
         else:
-            flash('No new transactions to import', 'info')
+            print("No new transactions found in CSV file")
+            flash('No new transactions to import', 'error')
             
     except Exception as e:
         db.session.rollback()
@@ -317,11 +345,10 @@ def clear_all_transactions():
         # Delete all transactions for the current user
         Portfolio.query.filter_by(user_id=current_user.id).delete()
         db.session.commit()
-        flash('All transactions have been cleared successfully!', 'success')
+        flash('All transactions have been cleared successfully', 'success')
     except Exception as e:
         db.session.rollback()
         flash(f'Error clearing transactions: {str(e)}', 'error')
-    
     return redirect(url_for('portfolio'))
 
 @app.route('/add_holding', methods=['GET', 'POST'])
@@ -360,20 +387,12 @@ def add_holding():
 @app.route('/delete_transaction/<int:transaction_id>', methods=['POST'])
 @login_required
 def delete_transaction(transaction_id):
-    try:
-        transaction = Portfolio.query.get_or_404(transaction_id)
-        # Ensure the transaction belongs to the current user
-        if transaction.user_id != current_user.id:
-            flash('Unauthorized action')
-            return redirect(url_for('portfolio'))
-        
-        db.session.delete(transaction)
-        db.session.commit()
-        flash('Transaction deleted successfully!')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Error deleting transaction: {str(e)}')
-    
+    transaction = Portfolio.query.get_or_404(transaction_id)
+    if transaction.user_id != current_user.id:
+        abort(403)
+    db.session.delete(transaction)
+    db.session.commit()
+    flash('Transaction deleted successfully', 'success')
     return redirect(url_for('portfolio'))
 
 @app.route('/edit_holding/<int:id>', methods=['GET', 'POST'])
@@ -409,87 +428,22 @@ def weekly_summary():
     try:
         analyzer = CryptoAnalyzer()
         
-        # Get historical data (2 years)
-        data = analyzer.fetch_historical_data('BTC')
-        if data is None:
+        # Get analysis data
+        result = analyzer.analyze_crypto('BTC')
+        if result is None:
             return render_template('weekly_summary.html', error="No data available")
-            
-        # Convert to DataFrame
-        df = pd.DataFrame(data)
-        df['date'] = pd.to_datetime(df['date'])
-        df['price'] = df['price'].astype(float)
-        df.set_index('date', inplace=True)
         
-        # Get Saturday data for MACD analysis (using all data for calculation)
-        saturday_data = df[df.index.weekday == 5]  # 5 is Saturday
-        weekly_data = saturday_data['price'].resample('W-SAT').last()
+        # Prepare data for template
+        weekly_data = result['historical_data']
+        current_week = result['current_week_data']
+        # Format the date as 'Mon DD, YYYY'
+        current_week['date_formatted'] = datetime.strptime(current_week['date'], '%Y-%m-%d').strftime('%b %d, %Y')
+        previous_week = weekly_data[-2] if len(weekly_data) > 1 else None
         
-        # Convert Saturday dates to Monday dates for display
-        weekly_data.index = weekly_data.index - pd.Timedelta(days=5)
+        # Generate recommendation based on current trend and momentum
+        recommendation = result['recommendation']
         
-        # Calculate EMAs using TradingView's exact method
-        def calculate_tv_ema(data, period):
-            alpha = 2 / (period + 1)  # TradingView's multiplier
-            ema = pd.Series(index=data.index, dtype=float)
-            
-            # Initialize with SMA (TradingView's method)
-            ema.iloc[:period] = data.iloc[:period].mean()
-            
-            # Calculate EMA using TradingView's multiplier
-            for i in range(period, len(data)):
-                ema.iloc[i] = (data.iloc[i] * alpha) + (ema.iloc[i-1] * (1 - alpha))
-            
-            return ema
-
-        # Calculate MACD components using TradingView's method (using all data)
-        ema12 = calculate_tv_ema(weekly_data, 12)
-        ema26 = calculate_tv_ema(weekly_data, 26)
-        macd_line = ema12 - ema26
-        signal_line = calculate_tv_ema(macd_line, 9)
-        
-        # Filter for data from April 2024 onwards for display
-        display_start = '2024-04'
-        weekly_data_display = weekly_data[display_start:]
-        macd_line_display = macd_line[display_start:]
-        signal_line_display = signal_line[display_start:]
-        
-        weekly_data_list = []
-        for i in range(len(weekly_data_display)):
-            date = weekly_data_display.index[i]
-            price = weekly_data_display.iloc[i]
-            macd_value = macd_line_display.iloc[i]
-            signal_value = signal_line_display.iloc[i]
-            distance = macd_value - signal_value
-            
-            weekly_data_list.append({
-                'date': date,
-                'price': price,
-                'macd': macd_value,
-                'signal': signal_value,
-                'distance': distance
-            })
-        
-        # Get current week's data
-        current_week = weekly_data_list[-1]
-        previous_week = weekly_data_list[-2] if len(weekly_data_list) > 1 else None
-        
-        # Generate recommendation
-        recommendation = ""
-        if current_week['distance'] > 0:
-            if previous_week and previous_week['distance'] <= 0:
-                recommendation = "Strong Buy Signal: MACD crossed above signal line"
-            elif current_week['distance'] > previous_week['distance']:
-                recommendation = "Buy/Hold: Bullish trend strengthening"
-            else:
-                recommendation = "Hold: Bullish trend but momentum slowing"
-        else:
-            if previous_week and previous_week['distance'] > 0:
-                recommendation = "Strong Sell Signal: MACD crossed below signal line"
-            elif current_week['distance'] < previous_week['distance']:
-                recommendation = "Sell/Hold: Bearish trend strengthening"
-            else:
-                recommendation = "Hold: Bearish trend but momentum slowing"
-
+        # Create analysis object for template
         analysis = {
             'current_week_data': current_week,
             'previous_week_data': previous_week,
@@ -498,10 +452,12 @@ def weekly_summary():
         
         return render_template('weekly_summary.html',
                              analysis=analysis,
-                             weekly_data=weekly_data_list)
+                             weekly_data=weekly_data)
                              
     except Exception as e:
-        return render_template('weekly_summary.html', error=str(e))
+        print(f"Error in weekly_summary: {str(e)}")
+        traceback.print_exc()
+        return render_template('weekly_summary.html', error=str(e), weekly_data=[])
 
 if __name__ == '__main__':
     with app.app_context():

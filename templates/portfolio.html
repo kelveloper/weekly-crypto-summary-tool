@@ -4,215 +4,233 @@
 
 {% block content %}
 <div class="container mt-4">
-    <div class="row mb-4">
-        <div class="col-md-6">
-            <h2>Portfolio Summary</h2>
+    {% if not transactions.items and not holdings %}
+        <div class="card mb-4">
+            <div class="card-body text-center">
+                <h3 class="mb-4">Welcome to Your Portfolio!</h3>
+                <p class="mb-4">Get started by importing your portfolio or adding holdings manually.</p>
+                <div class="d-flex justify-content-center gap-3">
+                    <div class="d-inline">
+                        <input type="file" name="csv_file" id="welcomeCsvFile" accept=".csv" style="display: none;">
+                        <button type="button" class="btn btn-primary" onclick="document.getElementById('welcomeCsvFile').click()">
+                            <i class="fas fa-file-import me-2"></i>Import CSV
+                        </button>
+                    </div>
+                    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addHoldingModal">
+                        <i class="fas fa-plus me-2"></i>Add Holding
+                    </button>
+                </div>
+            </div>
         </div>
-        <div class="col-md-6 text-end">
-            <form action="{{ url_for('import_csv') }}" method="POST" enctype="multipart/form-data" class="d-inline">
-                <input type="file" name="csv_file" id="csvFile" class="d-none" accept=".csv">
-                <button type="button" class="btn btn-primary me-2" onclick="document.getElementById('csvFile').click()">
-                    <i class="fas fa-file-import"></i> Import CSV
+    {% else %}
+        <h2 class="mb-4 text-center">Your Crypto Portfolio</h2>
+        
+        <div class="d-flex justify-content-end mb-3">
+            <div class="d-inline me-2">
+                <input type="file" name="csv_file" id="portfolioCsvFile" accept=".csv" style="display: none;">
+                <button type="button" class="btn btn-primary" onclick="document.getElementById('portfolioCsvFile').click()">
+                    <i class="fas fa-file-import me-2"></i>Import CSV
                 </button>
-            </form>
-            <a href="{{ url_for('add_holding') }}" class="btn btn-success me-2">
-                <i class="fas fa-plus"></i> Add Holding
-            </a>
+            </div>
+            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addHoldingModal">
+                <i class="fas fa-plus me-2"></i>Add Holding
+            </button>
             {% if transactions.items %}
-            <form action="{{ url_for('clear_all_transactions') }}" method="POST" class="d-inline">
-                <button type="submit" class="btn btn-danger" onclick="return confirm('Are you sure you want to clear all transactions? This action cannot be undone.')">
-                    <i class="fas fa-trash"></i> Clear All
+            <form action="{{ url_for('clear_all_transactions') }}" method="POST" class="d-inline ms-2" onsubmit="return confirm('Are you sure you want to clear all transactions? This action cannot be undone.');">
+                <button type="submit" class="btn btn-danger">
+                    <i class="fas fa-trash-alt me-2"></i>Clear All Transactions
                 </button>
             </form>
             {% endif %}
         </div>
-    </div>
-
-    {% if holdings %}
-        <div class="card mb-4">
-            <div class="card-header">
-                <h3>Portfolio Overview</h3>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h4>Total Portfolio Value</h4>
-                        <p class="h2">${{ "%.2f"|format(total_portfolio_value) }}</p>
+        
+        <!-- Portfolio Summary -->
+        {% if holdings %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h3>Portfolio Overview</h3>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h4>Total Initial Investment</h4>
+                            <p class="h2">${{ "%.2f"|format(total_initial_investment) }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h4>BTC Total Investment</h4>
+                            <p class="h2">${{ "%.2f"|format(btc_total_investment) }}</p>
+                            <p class="h4">Quantity: {{ "%.8f"|format(btc_quantity) }} BTC</p>
+                        </div>
                     </div>
-                    <div class="col-md-6">
-                        <h4>Total Profit/Loss</h4>
-                        <p class="h2 {% if total_profit_loss >= 0 %}text-success{% else %}text-danger{% endif %}">
-                            ${{ "%.2f"|format(total_profit_loss) }}
-                        </p>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h3>Current Holdings</h3>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Coin</th>
+                                    <th>Quantity</th>
+                                    <th>Average Price</th>
+                                    <th>Total Cost</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for symbol, data in holdings.items() %}
+                                    <tr>
+                                        <td>{{ symbol }}</td>
+                                        <td>{{ "%.4f"|format(data.quantity) }}</td>
+                                        <td>${{ "%.2f"|format(data.average_price) }}</td>
+                                        <td>${{ "%.2f"|format(data.total_cost) }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
-        </div>
+        {% endif %}
 
-        <div class="card mb-4">
-            <div class="card-header">
-                <h3>Current Holdings</h3>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-striped">
-                        <thead>
-                            <tr>
-                                <th>Symbol</th>
-                                <th>Quantity</th>
-                                <th>Average Price</th>
-                                <th>Current Price</th>
-                                <th>Total Value</th>
-                                <th>Profit/Loss</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for symbol, data in holdings.items() %}
-                            <tr>
-                                <td>{{ symbol }}</td>
-                                <td>{{ "%.4f"|format(data.quantity) }}</td>
-                                <td>${{ "%.2f"|format(data.average_price) }}</td>
-                                <td>${{ "%.2f"|format(data.current_price) }}</td>
-                                <td>${{ "%.2f"|format(data.total_value) }}</td>
-                                <td class="{% if data.profit_loss >= 0 %}text-success{% else %}text-danger{% endif %}">
-                                    ${{ "%.2f"|format(data.profit_loss) }} ({{ "%.2f"|format(data.profit_loss_percentage) }}%)
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+        {% if transactions.items %}
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3>Transaction History</h3>
+                    <div class="text-muted">
+                        Showing {{ transactions.items|length }} of {{ transactions.total }} transactions
+                    </div>
                 </div>
-            </div>
-        </div>
-    {% endif %}
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>Symbol</th>
+                                    <th>Quantity</th>
+                                    <th>Price</th>
+                                    <th>Total</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for transaction in transactions.items %}
+                                    <tr>
+                                        <td>{{ transaction.transaction_date.strftime('%Y-%m-%d') }}</td>
+                                        <td>{{ transaction.transaction_type }}</td>
+                                        <td>{{ transaction.symbol }}</td>
+                                        <td>{{ "%.4f"|format(transaction.quantity) }}</td>
+                                        <td>${{ "%.2f"|format(transaction.purchase_price) }}</td>
+                                        <td>${{ "%.2f"|format(transaction.quantity * transaction.purchase_price) }}</td>
+                                        <td>
+                                            {% if not transaction.transaction_id %}
+                                                <div class="btn-group" role="group">
+                                                    <a href="{{ url_for('edit_holding', id=transaction.id) }}" class="btn btn-primary btn-sm me-1">Edit</a>
+                                                    <form action="{{ url_for('delete_transaction', transaction_id=transaction.id) }}" method="POST" style="display: inline;">
+                                                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this transaction?')">
+                                                            Remove
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
 
-    {% if transactions.items %}
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h3>Transaction History</h3>
-                <div class="text-muted">
-                    Showing {{ transactions.items|length }} of {{ transactions.total }} transactions
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-striped">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Type</th>
-                                <th>Symbol</th>
-                                <th>Quantity</th>
-                                <th>Price</th>
-                                <th>Total</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for transaction in transactions.items %}
-                            <tr>
-                                <td>{{ transaction.transaction_date.strftime('%Y-%m-%d') }}</td>
-                                <td>{{ transaction.transaction_type }}</td>
-                                <td>{{ transaction.symbol }}</td>
-                                <td>{{ "%.4f"|format(transaction.quantity) }}</td>
-                                <td>${{ "%.2f"|format(transaction.purchase_price) }}</td>
-                                <td>${{ "%.2f"|format(transaction.quantity * transaction.purchase_price) }}</td>
-                                <td>
-                                    {% if not transaction.transaction_id %}
-                                        <div class="btn-group" role="group">
-                                            <a href="{{ url_for('edit_holding', id=transaction.id) }}" class="btn btn-primary btn-sm me-1">Edit</a>
-                                            <form action="{{ url_for('delete_transaction', transaction_id=transaction.id) }}" method="POST" style="display: inline;">
-                                                <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this transaction?')">
-                                                    Remove
-                                                </button>
-                                            </form>
-                                        </div>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Pagination -->
-                {% if transactions.pages > 1 %}
-                <nav aria-label="Transaction pagination" class="mt-4">
-                    <ul class="pagination justify-content-center">
-                        {% if transactions.has_prev %}
-                            <li class="page-item">
-                                <a class="page-link" href="{{ url_for('portfolio', page=transactions.prev_num) }}">Previous</a>
-                            </li>
-                        {% else %}
-                            <li class="page-item disabled">
-                                <span class="page-link">Previous</span>
-                            </li>
-                        {% endif %}
-
-                        {% for page_num in transactions.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
-                            {% if page_num %}
-                                {% if page_num == transactions.page %}
-                                    <li class="page-item active">
-                                        <span class="page-link">{{ page_num }}</span>
-                                    </li>
-                                {% else %}
-                                    <li class="page-item">
-                                        <a class="page-link" href="{{ url_for('portfolio', page=page_num) }}">{{ page_num }}</a>
-                                    </li>
-                                {% endif %}
+                    <!-- Pagination -->
+                    {% if transactions.pages > 1 %}
+                    <nav aria-label="Transaction pagination" class="mt-4">
+                        <ul class="pagination justify-content-center">
+                            {% if transactions.has_prev %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('portfolio', page=transactions.prev_num) }}">Previous</a>
+                                </li>
                             {% else %}
                                 <li class="page-item disabled">
-                                    <span class="page-link">...</span>
+                                    <span class="page-link">Previous</span>
                                 </li>
                             {% endif %}
-                        {% endfor %}
 
-                        {% if transactions.has_next %}
-                            <li class="page-item">
-                                <a class="page-link" href="{{ url_for('portfolio', page=transactions.next_num) }}">Next</a>
-                            </li>
-                        {% else %}
-                            <li class="page-item disabled">
-                                <span class="page-link">Next</span>
-                            </li>
-                        {% endif %}
-                    </ul>
-                </nav>
-                {% endif %}
-            </div>
-        </div>
-    {% else %}
-        <div class="card">
-            <div class="card-body text-center">
-                <h3>Welcome to Your Portfolio</h3>
-                <p class="lead">You don't have any transactions yet.</p>
-                <div class="mt-4">
-                    <form action="{{ url_for('import_csv') }}" method="POST" enctype="multipart/form-data" class="d-inline">
-                        <input type="file" name="csv_file" id="welcomeCsvFile" class="d-none" accept=".csv">
-                        <button type="button" class="btn btn-primary btn-lg me-2" onclick="document.getElementById('welcomeCsvFile').click()">
-                            <i class="fas fa-file-import"></i> Import CSV
-                        </button>
-                    </form>
-                    <a href="{{ url_for('add_holding') }}" class="btn btn-success btn-lg">
-                        <i class="fas fa-plus"></i> Add Holding
-                    </a>
+                            {% for page_num in transactions.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                                {% if page_num %}
+                                    {% if page_num == transactions.page %}
+                                        <li class="page-item active">
+                                            <span class="page-link">{{ page_num }}</span>
+                                        </li>
+                                    {% else %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="{{ url_for('portfolio', page=page_num) }}">{{ page_num }}</a>
+                                        </li>
+                                    {% endif %}
+                                {% else %}
+                                    <li class="page-item disabled">
+                                        <span class="page-link">...</span>
+                                    </li>
+                                {% endif %}
+                            {% endfor %}
+
+                            {% if transactions.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('portfolio', page=transactions.next_num) }}">Next</a>
+                                </li>
+                            {% else %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">Next</span>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
                 </div>
             </div>
-        </div>
+        {% endif %}
     {% endif %}
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    document.getElementById('csvFile').addEventListener('change', function() {
-        if (this.files.length > 0) {
-            this.form.submit();
-        }
-    });
     document.getElementById('welcomeCsvFile').addEventListener('change', function() {
         if (this.files.length > 0) {
-            this.form.submit();
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = "{{ url_for('import_csv') }}";
+            form.enctype = 'multipart/form-data';
+            
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.name = 'csv_file';
+            input.files = this.files;
+            form.appendChild(input);
+            
+            document.body.appendChild(form);
+            form.submit();
+        }
+    });
+    
+    document.getElementById('portfolioCsvFile').addEventListener('change', function() {
+        if (this.files.length > 0) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = "{{ url_for('import_csv') }}";
+            form.enctype = 'multipart/form-data';
+            
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.name = 'csv_file';
+            input.files = this.files;
+            form.appendChild(input);
+            
+            document.body.appendChild(form);
+            form.submit();
         }
     });
 </script>
