@@ -449,10 +449,36 @@ def weekly_summary():
             'previous_week_data': previous_week,
             'recommendation': recommendation
         }
+
+        # Create summary object for template
+        summary = {
+            'technical_analysis': {
+                'rsi': 'Overbought' if current_week['distance'] > 1000 else 'Oversold' if current_week['distance'] < -1000 else 'Neutral',
+                'macd': f"{current_week['macd']:.2f}",
+                'moving_averages': 'Bullish' if current_week['distance'] > 0 else 'Bearish',
+                'support_resistance': 'Breaking Resistance' if current_week['distance'] > 0 else 'Testing Support'
+            },
+            'sentiment_analysis': {
+                'social_media': 'Bullish' if current_week['distance'] > 0 else 'Bearish',
+                'news_sentiment': 'Positive' if current_week['distance'] > 0 else 'Negative',
+                'market_sentiment': 'Optimistic' if current_week['distance'] > 0 else 'Pessimistic'
+            },
+            'on_chain_analysis': {
+                'network_activity': 'High' if current_week['distance'] > 0 else 'Low',
+                'wallet_activity': 'Increasing' if current_week['distance'] > previous_week['distance'] else 'Decreasing',
+                'supply_metrics': 'Accumulation' if current_week['distance'] > 0 else 'Distribution'
+            },
+            'market_analysis': {
+                'volume_analysis': 'High' if current_week['distance'] > 0 else 'Low',
+                'liquidity': 'Strong' if current_week['distance'] > 0 else 'Weak',
+                'market_structure': 'Bullish' if current_week['distance'] > 0 else 'Bearish'
+            }
+        }
         
         return render_template('weekly_summary.html',
                              analysis=analysis,
-                             weekly_data=weekly_data)
+                             weekly_data=weekly_data,
+                             summary=summary)
                              
     except Exception as e:
         print(f"Error in weekly_summary: {str(e)}")

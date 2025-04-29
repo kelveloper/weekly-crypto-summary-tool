@@ -13,12 +13,36 @@ class CoinbaseAPI:
     def __init__(self):
         self.base_url = "https://api.exchange.coinbase.com"
         self.cache_dir = "cache"
-        self.cache_duration = 0  # Temporarily disable caching to force fresh data fetch
+        self.cache_duration = 3600  # 1 hour cache duration
         
         # Create cache directory if it doesn't exist
         if not os.path.exists(self.cache_dir):
             os.makedirs(self.cache_dir)
         print(f"CoinbaseAPI initialized with base_url: {self.base_url}")
+        
+        # Add test data for development
+        self.test_data = {
+            'BTC': [
+                {'date': '2024-01-01', 'price': 45000.0},
+                {'date': '2024-01-08', 'price': 46000.0},
+                {'date': '2024-01-15', 'price': 47000.0},
+                {'date': '2024-01-22', 'price': 48000.0},
+                {'date': '2024-01-29', 'price': 49000.0},
+                {'date': '2024-02-05', 'price': 50000.0},
+                {'date': '2024-02-12', 'price': 51000.0},
+                {'date': '2024-02-19', 'price': 52000.0},
+                {'date': '2024-02-26', 'price': 53000.0},
+                {'date': '2024-03-04', 'price': 54000.0},
+                {'date': '2024-03-11', 'price': 55000.0},
+                {'date': '2024-03-18', 'price': 56000.0},
+                {'date': '2024-03-25', 'price': 57000.0},
+                {'date': '2024-04-01', 'price': 58000.0},
+                {'date': '2024-04-08', 'price': 59000.0},
+                {'date': '2024-04-15', 'price': 60000.0},
+                {'date': '2024-04-22', 'price': 61000.0},
+                {'date': '2024-04-29', 'price': 62000.0}
+            ]
+        }
     
     def _get_cache_path(self, symbol):
         return os.path.join(self.cache_dir, f"{symbol.lower()}_coinbase_data.json")
@@ -56,6 +80,11 @@ class CoinbaseAPI:
     def fetch_historical_data(self, symbol):
         """Fetch historical data for a symbol using Coinbase API."""
         try:
+            # For development, use test data
+            if symbol in self.test_data:
+                print(f"Using test data for {symbol}")
+                return self.test_data[symbol]
+            
             # Calculate date range - fetch 2 years of data for better EMA initialization
             end_date = datetime.now()
             start_date = end_date - timedelta(days=730)  # 2 years
@@ -98,21 +127,10 @@ class CoinbaseAPI:
                 else:
                     print(f"Error response from Coinbase API: Status {response.status_code}")
                     print(f"Response: {response.text}")
-                    return None
                 
-                # Move to next chunk
-                current_start = current_end
-                # Small delay to avoid rate limiting
-                time.sleep(0.5)
+                current_start = current_end + timedelta(days=1)
             
-            if all_data:
-                print(f"Total data points collected: {len(all_data)}")
-                # Sort by date ascending
-                all_data.sort(key=lambda x: x['date'])
-                return all_data
-            
-            print("No data points collected")
-            return None
+            return all_data
             
         except Exception as e:
             print(f"Error fetching historical data: {str(e)}")

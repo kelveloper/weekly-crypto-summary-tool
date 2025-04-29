@@ -170,6 +170,23 @@
         height: 380px;
         width: 100%;
     }
+
+    .analysis-section {
+        padding: 1.5rem;
+        background-color: var(--apple-gray);
+        border-radius: 12px;
+        margin-top: 1rem;
+    }
+
+    .analysis-section h5 {
+        color: var(--apple-dark);
+        margin-bottom: 0.5rem;
+    }
+
+    .analysis-section p {
+        margin-bottom: 1.5rem;
+        line-height: 1.6;
+    }
 </style>
 
 <div class="container mt-4">
@@ -238,10 +255,10 @@
                         </div>
                     </div>
                     <div class="col-md-6">
-                        <h4>Signal Analysis</h4>
-                        <div id="signalAnalysis" class="alert {% if analysis.current_week_data.distance > 0 %}alert-success{% else %}alert-danger{% endif %}">
+                        <h4>Analysis & Recommendation</h4>
+                        <div class="analysis-section">
                             <h5>Current Status:</h5>
-                            <p id="selectedStatus">
+                            <p id="selectedStatus" class="{% if analysis.current_week_data.distance > 0 %}text-success{% else %}text-danger{% endif %}">
                                 {% if analysis.current_week_data.distance > 0 %}
                                     {% if analysis.previous_week_data and analysis.previous_week_data.distance <= 0 %}
                                         <strong>Golden Cross Alert!</strong> MACD has crossed above the signal line.
@@ -256,20 +273,22 @@
                                     {% endif %}
                                 {% endif %}
                             </p>
-                            <h5>Momentum:</h5>
-                            <p id="selectedMomentum">
-                                {% if analysis.previous_week_data %}
-                                    {% if analysis.current_week_data.distance > analysis.previous_week_data.distance %}
-                                        Momentum is increasing (Distance widening)
+                            <h5>Recommendation:</h5>
+                            <p id="selectedRecommendation" class="{% if analysis.current_week_data.distance > 0 %}text-success{% else %}text-danger{% endif %}">
+                                {% if analysis.current_week_data.distance > 0 %}
+                                    {% if analysis.previous_week_data and analysis.previous_week_data.distance <= 0 %}
+                                        Consider entering a long position as momentum is shifting bullish.
                                     {% else %}
-                                        Momentum is decreasing (Distance narrowing)
+                                        Maintain long positions as the bullish trend continues.
                                     {% endif %}
                                 {% else %}
-                                    Momentum data not available
+                                    {% if analysis.previous_week_data and analysis.previous_week_data.distance > 0 %}
+                                        Consider exiting long positions as momentum is shifting bearish.
+                                    {% else %}
+                                        Maintain short positions or stay on the sidelines as the bearish trend continues.
+                                    {% endif %}
                                 {% endif %}
                             </p>
-                            <h5>Recommendation:</h5>
-                            <p id="selectedRecommendation">{{ analysis.recommendation }}</p>
                         </div>
                     </div>
                 </div>
@@ -347,15 +366,14 @@ document.addEventListener('DOMContentLoaded', function() {
         week.monday_date.startsWith('2024') || week.monday_date.startsWith('2025')
     );
     
-    // Set initial selected week analysis to the most recent week
-    if (filteredData.length > 0) {
-        const currentWeek = filteredData[filteredData.length - 1];
-        document.getElementById('selectedDate').textContent = currentWeek.date_formatted;
-        document.getElementById('selectedPrice').textContent = '$' + currentWeek.price.toFixed(2);
-        document.getElementById('selectedMACD').textContent = currentWeek.macd.toFixed(4);
-        document.getElementById('selectedSignal').textContent = currentWeek.signal.toFixed(4);
+    // Function to update Selected Week Analysis
+    function updateSelectedWeekAnalysis(weekData) {
+        document.getElementById('selectedDate').textContent = weekData.date_formatted;
+        document.getElementById('selectedPrice').textContent = '$' + weekData.price.toFixed(2);
+        document.getElementById('selectedMACD').textContent = weekData.macd.toFixed(4);
+        document.getElementById('selectedSignal').textContent = weekData.signal.toFixed(4);
         
-        const distance = currentWeek.distance;
+        const distance = weekData.distance;
         const distanceElement = document.getElementById('selectedDistance');
         distanceElement.textContent = distance.toFixed(4);
         distanceElement.className = distance > 0 ? 'text-success' : 'text-danger';
@@ -364,15 +382,15 @@ document.addEventListener('DOMContentLoaded', function() {
         trendElement.textContent = distance > 0 ? 'Bullish' : 'Bearish';
         trendElement.className = 'badge ' + (distance > 0 ? 'bg-success' : 'bg-danger');
         
-        // Update Signal Analysis
-        const signalAnalysis = document.getElementById('signalAnalysis');
-        signalAnalysis.className = 'alert ' + (distance > 0 ? 'alert-success' : 'alert-danger');
+        // Update Status and Recommendation
+        const statusElement = document.getElementById('selectedStatus');
+        const recommendationElement = document.getElementById('selectedRecommendation');
         
         let status = '';
-        let momentum = '';
         let recommendation = '';
         
-        const prevWeek = filteredData.length > 1 ? filteredData[filteredData.length - 2] : null;
+        const currentIndex = filteredData.findIndex(w => w.monday_date === weekData.monday_date);
+        const prevWeek = currentIndex > 0 ? filteredData[currentIndex - 1] : null;
         
         if (prevWeek) {
             const prevDistance = prevWeek.distance;
@@ -380,37 +398,39 @@ document.addEventListener('DOMContentLoaded', function() {
             if (distance > 0) {
                 if (prevDistance <= 0) {
                     status = '<strong>Golden Cross Alert!</strong> MACD has crossed above the signal line.';
-                    recommendation = '🚀 PERFECT BUY SIGNAL! 🚀 This is the start of a bull market! MACD has crossed above signal line. This is your chance to buy aggressively as we\'re likely entering a strong uptrend.';
+                    recommendation = 'Consider entering a long position as momentum is shifting bullish.';
                 } else {
                     status = 'Bullish trend continuing. MACD remains above signal line.';
                     if (distance > prevDistance) {
-                        recommendation = '📈 HOLD STRONG! 📈 Bullish trend is strengthening. Keep your positions as the momentum is increasing. This is not the time to sell.';
+                        recommendation = 'Maintain long positions as the bullish trend continues.';
                     } else {
-                        recommendation = '⚠️ CAUTION: Reversal Signal! ⚠️ Distance is decreasing from previous week. This could indicate we\'re reaching a top. Consider taking profits or selling a portion of your holdings. Perfect time to secure some gains!';
+                        recommendation = 'Consider taking profits as momentum may be weakening.';
                     }
                 }
             } else {
                 if (prevDistance > 0) {
                     status = '<strong>Death Cross Alert!</strong> MACD has crossed below the signal line.';
-                    recommendation = '😢 BEAR MARKET ALERT! 😢 MACD has crossed below signal line. We\'re entering a bear market phase. Expect downward pressure for several weeks. This is not the time to buy.';
+                    recommendation = 'Consider exiting long positions as momentum is shifting bearish.';
                 } else {
                     status = 'Bearish trend continuing. MACD remains below signal line.';
                     if (distance < prevDistance) {
-                        recommendation = '💪 ACCUMULATION TIME! 💪 Bearish trend is strengthening. This is a great opportunity to start accumulating. Buy in small amounts as prices may continue to drop.';
+                        recommendation = 'Maintain short positions or stay on the sidelines.';
                     } else {
-                        recommendation = '🎯 STRONG BUY SIGNAL! 🎯 Distance is becoming less negative. This indicates a potential reversal. Start buying more aggressively as we might be approaching the bottom. Perfect time to increase your position!';
+                        recommendation = 'Consider starting to accumulate as momentum may be improving.';
                     }
                 }
             }
-            
-            momentum = distance > prevDistance ? 
-                'Momentum is increasing (Distance widening)' : 
-                'Momentum is decreasing (Distance narrowing)';
         }
         
-        document.getElementById('selectedStatus').innerHTML = status;
-        document.getElementById('selectedMomentum').textContent = momentum;
-        document.getElementById('selectedRecommendation').textContent = recommendation;
+        statusElement.innerHTML = status;
+        recommendationElement.textContent = recommendation;
+        
+        // Update text colors based on trend
+        statusElement.className = distance > 0 ? 'text-success' : 'text-danger';
+        recommendationElement.className = distance > 0 ? 'text-success' : 'text-danger';
+        
+        // Scroll to the analysis section
+        document.getElementById('currentWeekCard').scrollIntoView({ behavior: 'smooth' });
     }
     
     // Prepare data for the chart
@@ -464,6 +484,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 intersect: false,
                 mode: 'index'
             },
+            onClick: function(evt, elements) {
+                if (elements.length > 0) {
+                    const index = elements[0].index;
+                    const weekData = filteredData[index];
+                    if (weekData) {
+                        updateSelectedWeekAnalysis(weekData);
+                    }
+                }
+            },
             plugins: {
                 tooltip: {
                     callbacks: {
@@ -512,185 +541,17 @@ document.addEventListener('DOMContentLoaded', function() {
                         drawOnChartArea: false
                     }
                 }
-            },
-            onClick: function(evt, elements) {
-                if (elements.length > 0) {
-                    const index = elements[0].index;
-                    const weekData = filteredData[index];
-                    if (weekData) {
-                        // Find the corresponding row in the table
-                        const row = document.querySelector(`.historical-row[data-date="${weekData.monday_date}"]`);
-                        if (row) {
-                            // Update the selected week analysis
-                            document.getElementById('selectedDate').textContent = weekData.date_formatted;
-                            document.getElementById('selectedPrice').textContent = '$' + weekData.price.toFixed(2);
-                            document.getElementById('selectedMACD').textContent = weekData.macd.toFixed(4);
-                            document.getElementById('selectedSignal').textContent = weekData.signal.toFixed(4);
-                            
-                            const distance = weekData.distance;
-                            const distanceElement = document.getElementById('selectedDistance');
-                            distanceElement.textContent = distance.toFixed(4);
-                            distanceElement.className = distance > 0 ? 'text-success' : 'text-danger';
-                            
-                            const trendElement = document.getElementById('selectedTrend');
-                            trendElement.textContent = distance > 0 ? 'Bullish' : 'Bearish';
-                            trendElement.className = 'badge ' + (distance > 0 ? 'bg-success' : 'bg-danger');
-                            
-                            // Update Signal Analysis
-                            const signalAnalysis = document.getElementById('signalAnalysis');
-                            signalAnalysis.className = 'alert ' + (distance > 0 ? 'alert-success' : 'alert-danger');
-                            
-                            let status = '';
-                            let momentum = '';
-                            let recommendation = '';
-                            
-                            const prevWeek = index > 0 ? filteredData[index - 1] : null;
-                            
-                            if (prevWeek) {
-                                const prevDistance = prevWeek.distance;
-                                
-                                if (distance > 0) {
-                                    if (prevDistance <= 0) {
-                                        status = '<strong>Golden Cross Alert!</strong> MACD has crossed above the signal line.';
-                                        recommendation = '🚀 PERFECT BUY SIGNAL! 🚀 This is the start of a bull market! MACD has crossed above signal line. This is your chance to buy aggressively as we\'re likely entering a strong uptrend.';
-                                    } else {
-                                        status = 'Bullish trend continuing. MACD remains above signal line.';
-                                        if (distance > prevDistance) {
-                                            recommendation = '📈 HOLD STRONG! 📈 Bullish trend is strengthening. Keep your positions as the momentum is increasing. This is not the time to sell.';
-                                        } else {
-                                            recommendation = '⚠️ CAUTION: Reversal Signal! ⚠️ Distance is decreasing from previous week. This could indicate we\'re reaching a top. Consider taking profits or selling a portion of your holdings. Perfect time to secure some gains!';
-                                        }
-                                    }
-                                } else {
-                                    if (prevDistance > 0) {
-                                        status = '<strong>Death Cross Alert!</strong> MACD has crossed below the signal line.';
-                                        recommendation = '😢 BEAR MARKET ALERT! 😢 MACD has crossed below signal line. We\'re entering a bear market phase. Expect downward pressure for several weeks. This is not the time to buy.';
-                                    } else {
-                                        status = 'Bearish trend continuing. MACD remains below signal line.';
-                                        if (distance < prevDistance) {
-                                            recommendation = '💪 ACCUMULATION TIME! 💪 Bearish trend is strengthening. This is a great opportunity to start accumulating. Buy in small amounts as prices may continue to drop.';
-                                        } else {
-                                            recommendation = '🎯 STRONG BUY SIGNAL! 🎯 Distance is becoming less negative. This indicates a potential reversal. Start buying more aggressively as we might be approaching the bottom. Perfect time to increase your position!';
-                                        }
-                                    }
-                                }
-                                
-                                momentum = distance > prevDistance ? 
-                                    'Momentum is increasing (Distance widening)' : 
-                                    'Momentum is decreasing (Distance narrowing)';
-                            }
-                            
-                            document.getElementById('selectedStatus').innerHTML = status;
-                            document.getElementById('selectedMomentum').textContent = momentum;
-                            document.getElementById('selectedRecommendation').textContent = recommendation;
-                            
-                            // Scroll to the top of the analysis
-                            document.getElementById('currentWeekCard').scrollIntoView({ behavior: 'smooth' });
-                        }
-                    }
-                }
             }
         }
     });
 
-    // Add vertical line plugin
-    const verticalLinePlugin = {
-        id: 'verticalLine',
-        afterDraw: function(chart) {
-            if (chart.tooltip._active && chart.tooltip._active.length) {
-                const activePoint = chart.tooltip._active[0];
-                const ctx = chart.ctx;
-                const x = activePoint.element.x;
-                const topY = chart.scales.y.top;
-                const bottomY = chart.scales.y.bottom;
-
-                ctx.save();
-                ctx.beginPath();
-                ctx.moveTo(x, topY);
-                ctx.lineTo(x, bottomY);
-                ctx.lineWidth = 1;
-                ctx.strokeStyle = '#6E6E73';
-                ctx.setLineDash([5, 5]);
-                ctx.stroke();
-                ctx.restore();
-            }
-        }
-    };
-
-    Chart.register(verticalLinePlugin);
-
+    // Add click handlers to historical rows
     document.querySelectorAll('.historical-row').forEach(row => {
         row.addEventListener('click', function() {
             const date = this.dataset.date;
-            const weekData = weeklyData.find(week => week.monday_date === date);
-            
+            const weekData = filteredData.find(week => week.monday_date === date);
             if (weekData) {
-                // Update Weekly Performance
-                document.getElementById('selectedDate').textContent = weekData.date_formatted;
-                document.getElementById('selectedPrice').textContent = '$' + weekData.price.toFixed(2);
-                document.getElementById('selectedMACD').textContent = weekData.macd.toFixed(4);
-                document.getElementById('selectedSignal').textContent = weekData.signal.toFixed(4);
-                
-                const distance = weekData.distance;
-                const distanceElement = document.getElementById('selectedDistance');
-                distanceElement.textContent = distance.toFixed(4);
-                distanceElement.className = distance > 0 ? 'text-success' : 'text-danger';
-                
-                const trendElement = document.getElementById('selectedTrend');
-                trendElement.textContent = distance > 0 ? 'Bullish' : 'Bearish';
-                trendElement.className = 'badge ' + (distance > 0 ? 'bg-success' : 'bg-danger');
-                
-                // Update Signal Analysis
-                const signalAnalysis = document.getElementById('signalAnalysis');
-                signalAnalysis.className = 'alert ' + (distance > 0 ? 'alert-success' : 'alert-danger');
-                
-                let status = '';
-                let momentum = '';
-                let recommendation = '';
-                
-                const currentIndex = weeklyData.findIndex(week => week.monday_date === date);
-                const prevWeek = currentIndex > 0 ? weeklyData[currentIndex - 1] : null;
-                
-                if (prevWeek) {
-                    const prevDistance = prevWeek.distance;
-                    
-                    if (distance > 0) {
-                        if (prevDistance <= 0) {
-                            status = '<strong>Golden Cross Alert!</strong> MACD has crossed above the signal line.';
-                            recommendation = '🚀 PERFECT BUY SIGNAL! 🚀 This is the start of a bull market! MACD has crossed above signal line. This is your chance to buy aggressively as we\'re likely entering a strong uptrend.';
-                        } else {
-                            status = 'Bullish trend continuing. MACD remains above signal line.';
-                            if (distance > prevDistance) {
-                                recommendation = '📈 HOLD STRONG! 📈 Bullish trend is strengthening. Keep your positions as the momentum is increasing. This is not the time to sell.';
-                            } else {
-                                recommendation = '⚠️ CAUTION: Reversal Signal! ⚠️ Distance is decreasing from previous week. This could indicate we\'re reaching a top. Consider taking profits or selling a portion of your holdings. Perfect time to secure some gains!';
-                            }
-                        }
-                    } else {
-                        if (prevDistance > 0) {
-                            status = '<strong>Death Cross Alert!</strong> MACD has crossed below the signal line.';
-                            recommendation = '😢 BEAR MARKET ALERT! 😢 MACD has crossed below signal line. We\'re entering a bear market phase. Expect downward pressure for several weeks. This is not the time to buy.';
-                        } else {
-                            status = 'Bearish trend continuing. MACD remains below signal line.';
-                            if (distance < prevDistance) {
-                                recommendation = '💪 ACCUMULATION TIME! 💪 Bearish trend is strengthening. This is a great opportunity to start accumulating. Buy in small amounts as prices may continue to drop.';
-                            } else {
-                                recommendation = '🎯 STRONG BUY SIGNAL! 🎯 Distance is becoming less negative. This indicates a potential reversal. Start buying more aggressively as we might be approaching the bottom. Perfect time to increase your position!';
-                            }
-                        }
-                    }
-                    
-                    momentum = distance > prevDistance ? 
-                        'Momentum is increasing (Distance widening)' : 
-                        'Momentum is decreasing (Distance narrowing)';
-                }
-                
-                document.getElementById('selectedStatus').innerHTML = status;
-                document.getElementById('selectedMomentum').textContent = momentum;
-                document.getElementById('selectedRecommendation').textContent = recommendation;
-                
-                // Scroll to the top of the analysis
-                document.getElementById('currentWeekCard').scrollIntoView({ behavior: 'smooth' });
+                updateSelectedWeekAnalysis(weekData);
             }
         });
     });
