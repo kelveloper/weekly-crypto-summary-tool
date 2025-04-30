@@ -10,8 +10,8 @@
         --apple-dark: #1D1D1F;
         --success-green: #00D632;
         --danger-red: #FF3B30;
-        --light-green: rgba(0, 214, 50, 0.1);
-        --light-red: rgba(255, 59, 48, 0.1);
+        --light-green: #e6ffe6;
+        --light-red: #ffe6e6;
         --light-yellow: rgba(255, 204, 0, 0.2);
     }
 
@@ -212,8 +212,11 @@
 
         <!-- Current Week Analysis -->
         <div class="card mb-4" id="currentWeekCard">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h3 class="mb-0">Selected Week Analysis</h3>
+                <button id="currentWeekBtn" class="btn btn-primary">
+                    <i class="fas fa-sync-alt"></i> Current Week
+                </button>
             </div>
             <div class="card-body">
                 <div class="row">
@@ -262,14 +265,18 @@
                                 {% if analysis.current_week_data.distance > 0 %}
                                     {% if analysis.previous_week_data and analysis.previous_week_data.distance <= 0 %}
                                         <strong>Golden Cross Alert!</strong> MACD has crossed above the signal line.
+                                    {% elif analysis.previous_week_data and analysis.current_week_data.distance < analysis.previous_week_data.distance %}
+                                        <strong>First Reversal Warning!</strong> MACD momentum is decreasing.
                                     {% else %}
-                                        Bullish trend continuing. MACD remains above signal line.
+                                        MACD remains above signal line.
                                     {% endif %}
                                 {% else %}
                                     {% if analysis.previous_week_data and analysis.previous_week_data.distance > 0 %}
                                         <strong>Death Cross Alert!</strong> MACD has crossed below the signal line.
+                                    {% elif analysis.previous_week_data and analysis.current_week_data.distance > analysis.previous_week_data.distance %}
+                                        <strong>First Reversal Warning!</strong> MACD momentum is increasing.
                                     {% else %}
-                                        Bearish trend continuing. MACD remains below signal line.
+                                        MACD remains below signal line.
                                     {% endif %}
                                 {% endif %}
                             </p>
@@ -277,15 +284,19 @@
                             <p id="selectedRecommendation" class="{% if analysis.current_week_data.distance > 0 %}text-success{% else %}text-danger{% endif %}">
                                 {% if analysis.current_week_data.distance > 0 %}
                                     {% if analysis.previous_week_data and analysis.previous_week_data.distance <= 0 %}
-                                        Consider entering a long position as momentum is shifting bullish.
+                                        <strong>BUY SIGNAL:</strong> Golden Cross detected. Consider entering long positions.
+                                    {% elif analysis.previous_week_data and analysis.current_week_data.distance < analysis.previous_week_data.distance %}
+                                        <strong>PARTIAL SELL RECOMMENDATION:</strong> Consider selling 10-20% of your position. Hold the rest until Death Cross.
                                     {% else %}
-                                        Maintain long positions as the bullish trend continues.
+                                        Hold existing positions. MACD remains bullish.
                                     {% endif %}
                                 {% else %}
                                     {% if analysis.previous_week_data and analysis.previous_week_data.distance > 0 %}
-                                        Consider exiting long positions as momentum is shifting bearish.
+                                        <strong>SELL SIGNAL:</strong> Death Cross detected. Exit all positions.
+                                    {% elif analysis.previous_week_data and analysis.current_week_data.distance > analysis.previous_week_data.distance %}
+                                        <strong>PARTIAL BUY OPPORTUNITY:</strong> Consider buying 10-20% of your position. Hold the rest until Golden Cross.
                                     {% else %}
-                                        Maintain short positions or stay on the sidelines as the bearish trend continues.
+                                        Stay on the sidelines. MACD remains bearish.
                                     {% endif %}
                                 {% endif %}
                             </p>
@@ -316,21 +327,34 @@
                         <tbody>
                             {% for week in weekly_data %}
                                 {% if week.monday_date.startswith('2024') or week.monday_date.startswith('2025') %}
+                                {% set current_index = loop.index0 %}
+                                {% set prev_week = weekly_data[current_index - 1] if current_index > 0 else none %}
+                                {% set prev_prev_week = weekly_data[current_index - 2] if current_index > 1 else none %}
+                                
+                                {% set is_golden_cross = week.distance > 0 and prev_week and prev_week.distance <= 0 %}
+                                {% set is_death_cross = week.distance < 0 and prev_week and prev_week.distance >= 0 %}
+                                
+                                {% set is_partial_sell = week.distance > 0 and prev_week and prev_prev_week and 
+                                                         week.macd < prev_week.macd and prev_week.macd > prev_prev_week.macd %}
+                                
+                                {% set is_partial_buy = week.distance < 0 and prev_week and prev_prev_week and 
+                                                       week.macd > prev_week.macd and prev_week.macd < prev_prev_week.macd %}
+                                
                                 <tr class="historical-row" 
-                                    data-index="{{ loop.index0 }}"
+                                    data-index="{{ current_index }}"
                                     data-date="{{ week.monday_date }}"
                                     data-price="{{ week.price }}"
                                     data-macd="{{ week.macd }}"
                                     data-signal="{{ week.signal }}"
                                     data-distance="{{ week.distance }}"
-                                    {% if week.is_reversal or week.market_message or week.special_recommendation %}
-                                        {% if week.highlight_color == 'lightgreen' %}
-                                            style="background-color: var(--light-green);"
-                                        {% elif week.highlight_color == 'lightred' %}
-                                            style="background-color: var(--light-red);"
-                                        {% elif week.highlight_color == 'lightyellow' %}
-                                            style="background-color: var(--light-yellow);"
-                                        {% endif %}
+                                    {% if is_golden_cross %}
+                                        style="background-color: #e6ffe6; font-weight: bold;"
+                                    {% elif is_death_cross %}
+                                        style="background-color: #ffe6e6; font-weight: bold;"
+                                    {% elif is_partial_sell %}
+                                        style="background-color: #fff0f0; font-weight: bold;"
+                                    {% elif is_partial_buy %}
+                                        style="background-color: #f0fff0; font-weight: bold;"
                                     {% endif %}>
                                     <td>{{ week.date_formatted }}</td>
                                     <td>${{ "%.2f"|format(week.price) }}</td>
@@ -338,11 +362,34 @@
                                     <td>{{ "%.4f"|format(week.signal) }}</td>
                                     <td>{{ "%.4f"|format(week.distance) }}</td>
                                     <td>
-                                        {{ week.trend }}
-                                        {% if week.market_message %}
-                                            <br><small style="color: {% if week.trend == 'Bullish' %}#00D632{% else %}#FF3B30{% endif %}; font-weight: bold; font-size: 1.1em;">{{ week.market_message }}</small>
-                                        {% elif week.special_recommendation %}
-                                            <br><small style="color: {% if week.highlight_color == 'lightgreen' %}#00D632{% elif week.highlight_color == 'lightred' %}#FF3B30{% else %}#6E6E73{% endif %};">{{ week.special_recommendation }}</small>
+                                        {% if week.distance > 0 %}
+                                            {% if is_golden_cross %}
+                                                <span style="color: #00D632; font-weight: bold; font-size: 1.2em;">Welcome to the Bull Market! 🚀</span>
+                                                <br><small style="color: #00D632; font-weight: bold; font-size: 1.1em;">
+                                                    <strong>BUY! BUY! BUY!</strong> STRONGLY RECOMMENDED TO BUY NOW! 🎯
+                                                </small>
+                                            {% elif is_partial_sell %}
+                                                <span style="color: #800000; font-weight: bold;">Partial Sell Signal ⚠️</span>
+                                                <br><small style="color: #800000; font-weight: bold;">
+                                                    Consider selling 10-20% of your position
+                                                </small>
+                                            {% else %}
+                                                <span style="color: #00D632; font-weight: bold;">Bullish - Hold 🎯</span>
+                                            {% endif %}
+                                        {% else %}
+                                            {% if is_death_cross %}
+                                                <span style="color: #FF3B30; font-weight: bold;">Welcome to the Bear Market! 🐻</span>
+                                                <br><small style="color: #FF3B30; font-weight: bold; font-size: 1.1em;">
+                                                    <strong>SELL! SELL! SELL!</strong> STRONGLY RECOMMENDED TO SELL NOW! ⚠️
+                                                </small>
+                                            {% elif is_partial_buy %}
+                                                <span style="color: #008000; font-weight: bold;">Partial Buy Signal ⚠️</span>
+                                                <br><small style="color: #008000; font-weight: bold;">
+                                                    Consider buying 10-20% of your position
+                                                </small>
+                                            {% else %}
+                                                <span style="color: #FF3B30; font-weight: bold;">Bearish - Stay Out 🐻</span>
+                                            {% endif %}
                                         {% endif %}
                                     </td>
                                 </tr>
@@ -357,81 +404,19 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.1.1/dist/chartjs-plugin-annotation.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const weeklyData = JSON.parse('{{ weekly_data|tojson|safe }}');
+    const currentWeekData = JSON.parse('{{ analysis.current_week_data|tojson|safe }}');
+    const previousWeekData = JSON.parse('{{ analysis.previous_week_data|tojson|safe }}');
+    const previousPrevWeekData = JSON.parse('{{ analysis.previous_prev_week_data|tojson|safe }}');
     
     // Filter data for 2024 and 2025
-    const filteredData = weeklyData.filter(week => 
-        week.monday_date.startsWith('2024') || week.monday_date.startsWith('2025')
-    );
-    
-    // Function to update Selected Week Analysis
-    function updateSelectedWeekAnalysis(weekData) {
-        document.getElementById('selectedDate').textContent = weekData.date_formatted;
-        document.getElementById('selectedPrice').textContent = '$' + weekData.price.toFixed(2);
-        document.getElementById('selectedMACD').textContent = weekData.macd.toFixed(4);
-        document.getElementById('selectedSignal').textContent = weekData.signal.toFixed(4);
-        
-        const distance = weekData.distance;
-        const distanceElement = document.getElementById('selectedDistance');
-        distanceElement.textContent = distance.toFixed(4);
-        distanceElement.className = distance > 0 ? 'text-success' : 'text-danger';
-        
-        const trendElement = document.getElementById('selectedTrend');
-        trendElement.textContent = distance > 0 ? 'Bullish' : 'Bearish';
-        trendElement.className = 'badge ' + (distance > 0 ? 'bg-success' : 'bg-danger');
-        
-        // Update Status and Recommendation
-        const statusElement = document.getElementById('selectedStatus');
-        const recommendationElement = document.getElementById('selectedRecommendation');
-        
-        let status = '';
-        let recommendation = '';
-        
-        const currentIndex = filteredData.findIndex(w => w.monday_date === weekData.monday_date);
-        const prevWeek = currentIndex > 0 ? filteredData[currentIndex - 1] : null;
-        
-        if (prevWeek) {
-            const prevDistance = prevWeek.distance;
-            
-            if (distance > 0) {
-                if (prevDistance <= 0) {
-                    status = '<strong>Golden Cross Alert!</strong> MACD has crossed above the signal line.';
-                    recommendation = 'Consider entering a long position as momentum is shifting bullish.';
-                } else {
-                    status = 'Bullish trend continuing. MACD remains above signal line.';
-                    if (distance > prevDistance) {
-                        recommendation = 'Maintain long positions as the bullish trend continues.';
-                    } else {
-                        recommendation = 'Consider taking profits as momentum may be weakening.';
-                    }
-                }
-            } else {
-                if (prevDistance > 0) {
-                    status = '<strong>Death Cross Alert!</strong> MACD has crossed below the signal line.';
-                    recommendation = 'Consider exiting long positions as momentum is shifting bearish.';
-                } else {
-                    status = 'Bearish trend continuing. MACD remains below signal line.';
-                    if (distance < prevDistance) {
-                        recommendation = 'Maintain short positions or stay on the sidelines.';
-                    } else {
-                        recommendation = 'Consider starting to accumulate as momentum may be improving.';
-                    }
-                }
-            }
-        }
-        
-        statusElement.innerHTML = status;
-        recommendationElement.textContent = recommendation;
-        
-        // Update text colors based on trend
-        statusElement.className = distance > 0 ? 'text-success' : 'text-danger';
-        recommendationElement.className = distance > 0 ? 'text-success' : 'text-danger';
-        
-        // Scroll to the analysis section
-        document.getElementById('currentWeekCard').scrollIntoView({ behavior: 'smooth' });
-    }
+    const filteredData = weeklyData.filter(week => {
+        const date = new Date(week.monday_date);
+        return date.getFullYear() >= 2024;
+    });
     
     // Prepare data for the chart
     const dates = filteredData.map(function(week) { return week.date_formatted; });
@@ -454,7 +439,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     borderWidth: 2,
                     tension: 0.1,
                     pointRadius: 0,
-                    pointHoverRadius: 0
+                    pointHoverRadius: 0,
+                    fill: false
                 },
                 {
                     label: 'Signal Line',
@@ -464,7 +450,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     borderWidth: 2,
                     tension: 0.1,
                     pointRadius: 0,
-                    pointHoverRadius: 0
+                    pointHoverRadius: 0,
+                    fill: false
                 },
                 {
                     label: 'Distance',
@@ -525,7 +512,26 @@ document.addEventListener('DOMContentLoaded', function() {
                     },
                     ticks: {
                         maxRotation: 45,
-                        minRotation: 45
+                        minRotation: 45,
+                        callback: function(value, index) {
+                            const weekData = filteredData[index];
+                            if (!weekData) return '';
+                            
+                            const date = new Date(weekData.monday_date);
+                            
+                            // Always show January 1st, 2024
+                            if (date.getFullYear() === 2024 && date.getMonth() === 0 && date.getDate() === 1) {
+                                return 'Jan 1, 2024';
+                            }
+                            
+                            // Show every 4th week
+                            if (index % 4 === 0) {
+                                return weekData.date_formatted;
+                            }
+                            
+                            return '';
+                        },
+                        autoSkip: false
                     }
                 },
                 y: {
@@ -549,12 +555,90 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.historical-row').forEach(row => {
         row.addEventListener('click', function() {
             const date = this.dataset.date;
-            const weekData = filteredData.find(week => week.monday_date === date);
+            const weekData = weeklyData.find(week => week.monday_date === date);
             if (weekData) {
                 updateSelectedWeekAnalysis(weekData);
             }
         });
     });
+
+    // Function to update Selected Week Analysis
+    function updateSelectedWeekAnalysis(weekData) {
+        // Update selected week information
+        document.getElementById('selectedDate').textContent = weekData.date_formatted;
+        document.getElementById('selectedPrice').textContent = '$' + weekData.price.toFixed(2);
+        document.getElementById('selectedMACD').textContent = weekData.macd.toFixed(4);
+        document.getElementById('selectedSignal').textContent = weekData.signal.toFixed(4);
+        document.getElementById('selectedDistance').textContent = weekData.distance.toFixed(4);
+        document.getElementById('selectedTrend').textContent = weekData.distance > 0 ? 'Bullish' : 'Bearish';
+
+        // Find the current week's index and previous weeks
+        const currentIndex = weeklyData.findIndex(w => w.monday_date === weekData.monday_date);
+        const previousWeek = currentIndex > 0 ? weeklyData[currentIndex - 1] : null;
+        const previousPrevWeek = currentIndex > 1 ? weeklyData[currentIndex - 2] : null;
+
+        // Update status and recommendation based on trend and momentum
+        const statusElement = document.getElementById('selectedStatus');
+        const recommendationElement = document.getElementById('selectedRecommendation');
+
+        if (weekData.distance > 0) {
+            statusElement.className = 'text-success';
+            recommendationElement.className = 'text-success';
+
+            if (previousWeek && previousWeek.distance <= 0) {
+                // Golden Cross
+                statusElement.innerHTML = '<strong>Golden Cross Alert!</strong> MACD has crossed above the signal line.';
+                recommendationElement.innerHTML = '<strong>BUY SIGNAL:</strong> Golden Cross detected. Consider entering long positions.';
+            } else if (previousWeek && previousPrevWeek && 
+                      weekData.macd < previousWeek.macd && 
+                      previousWeek.macd > previousPrevWeek.macd) {
+                // Reversal down after MACD was increasing
+                statusElement.innerHTML = '<strong>Reversal Warning!</strong> MACD is decreasing after an uptrend.';
+                recommendationElement.innerHTML = '<strong>PARTIAL SELL RECOMMENDATION:</strong> Consider selling 10-20% of your position. Hold the rest until Death Cross.';
+            } else if (previousWeek && previousPrevWeek && 
+                      weekData.macd > previousWeek.macd && 
+                      previousWeek.macd < previousPrevWeek.macd) {
+                // Reversal up after a decrease in MACD
+                statusElement.innerHTML = '<strong>Recovery Alert!</strong> MACD is increasing after a decrease.';
+                recommendationElement.innerHTML = '<strong>PARTIAL BUY OPPORTUNITY:</strong> Consider buying 10-20% of your position. MACD is recovering.';
+            } else {
+                // Stable or no previous data
+                statusElement.textContent = 'MACD remains above signal line.';
+                recommendationElement.textContent = 'Hold existing positions. MACD remains bullish.';
+            }
+        } else {
+            // Bearish (MACD < 0)
+            statusElement.className = 'text-danger';
+            recommendationElement.className = 'text-danger';
+
+            if (previousWeek && previousWeek.distance > 0) {
+                // Death Cross
+                statusElement.innerHTML = '<strong>Death Cross Alert!</strong> MACD has crossed below the signal line.';
+                recommendationElement.innerHTML = '<strong>SELL SIGNAL:</strong> Death Cross detected. Exit all positions.';
+            } else if (previousWeek && previousPrevWeek && 
+                      weekData.macd > previousWeek.macd && 
+                      previousWeek.macd < previousPrevWeek.macd &&
+                      previousPrevWeek.macd < previousPrevWeek.signal) {
+                // Reversal up after MACD was in a clear downtrend
+                statusElement.innerHTML = '<strong>Reversal Warning!</strong> MACD is increasing after a clear downtrend.';
+                recommendationElement.innerHTML = '<strong>PARTIAL BUY OPPORTUNITY:</strong> Consider buying 10-20% of your position. Hold the rest until Golden Cross.';
+            } else {
+                // Stable or no previous data
+                statusElement.textContent = 'MACD remains below signal line.';
+                recommendationElement.textContent = 'Stay on the sidelines. MACD remains bearish.';
+            }
+        }
+        
+        document.getElementById('currentWeekCard').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Add click handler for Current Week button
+    document.getElementById('currentWeekBtn').addEventListener('click', function() {
+        updateSelectedWeekAnalysis(currentWeekData);
+    });
+
+    // Initialize with current week data
+    updateSelectedWeekAnalysis(currentWeekData);
 });
 </script>
 {% endblock %} 
