@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, abort
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -164,82 +164,68 @@ def portfolio():
     try:
         # Get page number from request args, default to 1
         page = request.args.get('page', 1, type=int)
-        per_page = 10  # Show 10 transactions per page
+        per_page = 20  # Increased to 20 transactions per page
         
-        # Get all transactions for the current user with pagination
+        # Get paginated transactions for the current user
         transactions = Portfolio.query.filter_by(user_id=current_user.id)\
             .order_by(Portfolio.transaction_date.desc())\
             .paginate(page=page, per_page=per_page, error_out=False)
         
-        # Calculate holdings
-        holdings = {}
-        total_initial_investment = 0
-        
-        # Get all transactions for holdings calculation (not paginated)
+        # Get all transactions for holdings calculation in reverse chronological order
         all_transactions = Portfolio.query.filter_by(user_id=current_user.id)\
-            .order_by(Portfolio.transaction_date.asc())\
+            .order_by(Portfolio.transaction_date.desc())\
             .all()
         
-        print("\n=== Transaction Details ===")
+        # Calculate current holdings
+        holdings = {}
+        # Calculate BTC total investment separately
+        btc_total_investment = 0
+        btc_quantity = 0.0  # Explicitly set to 0.0
+        # Calculate total initial investment by summing all transaction totals
+        total_initial_investment = sum(transaction.transaction_total for transaction in all_transactions)
+        
+        # Group transactions by symbol
+        transactions_by_symbol = {}
         for transaction in all_transactions:
             symbol = transaction.symbol
-            if symbol not in holdings:
-                holdings[symbol] = {
-                    'quantity': 0,
-                    'total_cost': 0,
-                    'average_price': 0
-                }
-            
-            # Use the sign of transaction_quantity to determine buy/sell
-            # Positive quantity = buy, Negative quantity = sell
-            quantity = transaction.transaction_quantity
-            total = transaction.transaction_total  # This is the Total (inclusive of fees and/or spread)
-            
-            # Update holdings based on quantity sign
-            holdings[symbol]['quantity'] += quantity
-            
-            # Update total cost by adding/subtracting the Total value
-            holdings[symbol]['total_cost'] += total
-            
-            # Calculate total initial investment by adding/subtracting the Total column value
-            print(f"\nTransaction Details:")
-            print(f"Date: {transaction.transaction_date}")
-            print(f"Symbol: {symbol}")
-            print(f"Type: {'Buy' if quantity > 0 else 'Sell'}")
-            print(f"Quantity: {quantity}")
-            print(f"Total (including fees): ${total}")
-            print(f"Current Total Cost for {symbol}: ${holdings[symbol]['total_cost']}")
-            
-            # Add or subtract the total based on the transaction type
-            total_initial_investment += total  # This will add positive values and subtract negative values
-            print(f"New Total Investment: ${total_initial_investment}")
-            
-            # Calculate average price based on remaining quantity
-            if holdings[symbol]['quantity'] > 0:
-                holdings[symbol]['average_price'] = holdings[symbol]['total_cost'] / holdings[symbol]['quantity']
-            else:
-                holdings[symbol]['average_price'] = 0
+            if symbol not in transactions_by_symbol:
+                transactions_by_symbol[symbol] = []
+            transactions_by_symbol[symbol].append(transaction)
         
-        print(f"\n=== Final Summary ===")
-        print(f"Total Initial Investment: ${total_initial_investment}")
-        print("\nCurrent Holdings:")
-        for symbol, holding in holdings.items():
-            print(f"\n{symbol}:")
-            print(f"Quantity: {holding['quantity']}")
-            print(f"Total Cost: ${holding['total_cost']}")
-            print(f"Average Price: ${holding['average_price']}")
-        print("=======================\n")
+        # Calculate quantities for each symbol
+        for symbol, transactions in transactions_by_symbol.items():
+            # Sort transactions by date (oldest first)
+            transactions.sort(key=lambda x: x.transaction_date)
+            
+            running_quantity = 0.0
+            for transaction in transactions:
+                # Simply add the transaction quantity (negative for sells, positive for buys)
+                running_quantity += transaction.transaction_quantity
+            
+            # Store the final quantity
+            if running_quantity > 0:
+                holdings[symbol] = {
+                    'quantity': running_quantity,
+                    'total_cost': sum(t.transaction_total for t in transactions),
+                    'average_price': sum(t.transaction_total for t in transactions) / running_quantity
+                }
         
         # Remove holdings with zero quantity
         holdings = {k: v for k, v in holdings.items() if v['quantity'] > 0}
         
-        return render_template('portfolio.html',
+        # Get BTC specific values
+        if 'BTC' in holdings:
+            btc_quantity = holdings['BTC']['quantity']
+            btc_total_investment = holdings['BTC']['total_cost']
+        
+        return render_template('portfolio.html', 
                              transactions=transactions,
                              holdings=holdings,
-                             total_initial_investment=total_initial_investment)
+                             total_initial_investment=total_initial_investment,
+                             btc_total_investment=btc_total_investment,
+                             btc_quantity=btc_quantity)
     except Exception as e:
-        print(f"Error in portfolio route: {str(e)}")
-        flash('An error occurred while loading your portfolio.', 'error')
+        flash('Error loading portfolio. Please try again later.', 'error')
         return redirect(url_for('index'))
 
 @app.route('/import_csv', methods=['POST'])
@@ -356,6 +342,7 @@ def import_csv():
 @login_required
 def clear_all_transactions():
     try:
+        # Delete all transactions for the current user
         Portfolio.query.filter_by(user_id=current_user.id).delete()
         db.session.commit()
         flash('All transactions have been cleared successfully', 'success')
@@ -364,21 +351,49 @@ def clear_all_transactions():
         flash(f'Error clearing transactions: {str(e)}', 'error')
     return redirect(url_for('portfolio'))
 
+@app.route('/add_holding', methods=['GET', 'POST'])
+@login_required
+def add_holding():
+    if request.method == 'POST':
+        try:
+            # Generate a unique transaction ID for manual entries
+            transaction_id = f"manual_{int(time.time())}_{random.randint(1000, 9999)}"
+            
+            holding = Portfolio(
+                user_id=current_user.id,
+                symbol=request.form.get('symbol'),
+                purchase_date=datetime.strptime(request.form.get('purchase_date'), '%Y-%m-%d').date(),
+                purchase_price=float(request.form.get('purchase_price')),
+                quantity=float(request.form.get('quantity')),
+                transaction_type='Buy',  # Default to Buy for manual entries
+                transaction_id=transaction_id,
+                transaction_date=datetime.strptime(request.form.get('purchase_date'), '%Y-%m-%d').date(),
+                transaction_price=float(request.form.get('purchase_price')),
+                transaction_quantity=float(request.form.get('quantity')),
+                transaction_fee=0.0,  # Default to 0 for manual entries
+                transaction_total=float(request.form.get('purchase_price')) * float(request.form.get('quantity'))
+            )
+            db.session.add(holding)
+            db.session.commit()
+            flash('Holding added successfully!')
+            return redirect(url_for('portfolio'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error adding holding: {str(e)}')
+            return redirect(url_for('add_holding'))
+    
+    return render_template('add_holding.html')
+
 @app.route('/delete_transaction/<int:transaction_id>', methods=['POST'])
 @login_required
 def delete_transaction(transaction_id):
-    try:
-        transaction = Portfolio.query.get_or_404(transaction_id)
-        if transaction.user_id != current_user.id:
-            abort(403)
-        db.session.delete(transaction)
-        db.session.commit()
-        flash('Transaction deleted successfully', 'success')
-        return redirect(url_for('portfolio'))
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Error deleting transaction: {str(e)}', 'error')
-        return redirect(url_for('portfolio'))
+    transaction = Portfolio.query.get_or_404(transaction_id)
+    if transaction.user_id != current_user.id:
+        abort(403)
+    db.session.delete(transaction)
+    db.session.commit()
+    flash('Transaction deleted successfully', 'success')
+    return redirect(url_for('portfolio'))
 
 @app.route('/edit_holding/<int:id>', methods=['GET', 'POST'])
 @login_required
@@ -424,7 +439,6 @@ def weekly_summary():
         # Format the date as 'Mon DD, YYYY'
         current_week['date_formatted'] = datetime.strptime(current_week['date'], '%Y-%m-%d').strftime('%b %d, %Y')
         previous_week = weekly_data[-2] if len(weekly_data) > 1 else None
-        previous_prev_week = weekly_data[-3] if len(weekly_data) > 2 else None
         
         # Generate recommendation based on current trend and momentum
         recommendation = result['recommendation']
@@ -433,7 +447,6 @@ def weekly_summary():
         analysis = {
             'current_week_data': current_week,
             'previous_week_data': previous_week,
-            'previous_prev_week_data': previous_prev_week,
             'recommendation': recommendation
         }
 

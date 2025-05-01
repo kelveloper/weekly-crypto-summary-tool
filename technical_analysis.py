@@ -241,23 +241,29 @@ class CryptoAnalyzer:
     
     def analyze_crypto(self, symbol):
         """Analyze cryptocurrency using MACD that matches TradingView's implementation."""
+        print(f"\nStarting analysis for {symbol}...")
+        
         try:
             # Fetch historical data
             data = self.fetch_historical_data(symbol)
             
             if data is None:
+                print("Error: No data returned from fetch_historical_data")
                 return None
                 
             if len(data) < 180:
+                print(f"Error: Not enough data points for analysis. Got {len(data)}, need at least 180")
                 return None
                 
             # Convert to DataFrame
+            print("Converting data to DataFrame...")
             df = pd.DataFrame(data)
             df['date'] = pd.to_datetime(df['date'])
             df.set_index('date', inplace=True)
             
             # Resample to weekly data (using Saturday as the end of week)
             weekly_df = df.resample('W-SAT').last()
+            print(f"Number of weekly data points: {len(weekly_df)}")
             
             # Calculate EMAs using TradingView's formula
             def calculate_tv_ema(data, length):
@@ -283,8 +289,10 @@ class CryptoAnalyzer:
             
             # Drop rows with NaN values
             weekly_df = weekly_df.dropna()
+            print(f"Data points after removing NaN: {len(weekly_df)}")
             
             if len(weekly_df) < 2:
+                print("Error: Not enough data points after MACD calculation")
                 return None
             
             # Get current date and previous Monday
@@ -296,6 +304,7 @@ class CryptoAnalyzer:
             
             # Filter data for display (last 8 weeks)
             display_df = weekly_df[weekly_df.index >= start_date]
+            print(f"Data points for display: {len(display_df)}")
             
             # Prepare historical data
             historical_data = []
@@ -304,6 +313,10 @@ class CryptoAnalyzer:
             current_market = None  # Track current market state
             previous_macd = None
             previous_macd_trend = None
+            
+            print("\n=== Weekly MACD Analysis Data ===")
+            print("Date\t\tPrice\t\tMACD\t\tSignal\t\tDistance\tMarket")
+            print("-" * 100)
             
             for i in range(len(weekly_df)):
                 date = weekly_df.index[i]
@@ -343,7 +356,6 @@ class CryptoAnalyzer:
                         is_reversal = True
                         highlight_color = 'lightgreen'
                         special_recommendation = "🚀 BUY ALERT: MACD reversal in Bear Market! MACD has started increasing, indicating potential bottom formation."
-                        print(f"[Partial Buy] {monday_date.strftime('%Y-%m-%d')} - MACD reversal in Bear Market")
                     else:
                         highlight_color = 'lightyellow'
                         special_recommendation = "📊 HOLD/ACCUMULATE: In Bear Market, consider accumulating on dips while waiting for stronger reversal signals."
@@ -352,7 +364,6 @@ class CryptoAnalyzer:
                         is_reversal = True
                         highlight_color = 'lightred'
                         special_recommendation = "🚨 SELL ALERT: MACD reversal in Bull Market! MACD has started decreasing, indicating potential top formation."
-                        print(f"[Partial Sell] {monday_date.strftime('%Y-%m-%d')} - MACD reversal in Bull Market")
                     else:
                         highlight_color = 'lightyellow'
                         special_recommendation = "📊 HOLD/SELL PARTIAL: In Bull Market, consider taking some profits while maintaining core position."
@@ -362,6 +373,9 @@ class CryptoAnalyzer:
                 previous_macd = macd_value
                 previous_distance = distance
                 previous_trend = 'increasing' if distance > previous_distance else 'decreasing' if previous_distance is not None else None
+                
+                # Print the analysis data with simplified market trend
+                print(f"{monday_date.strftime('%Y-%m-%d')}\t${price:.2f}\t{macd_value:.4f}\t{signal_value:.4f}\t{distance:.4f}\t{current_market or 'N/A'}")
                 
                 week_data = {
                     'date': monday_date.strftime('%Y-%m-%d'),
@@ -380,6 +394,7 @@ class CryptoAnalyzer:
                 historical_data.append(week_data)
             
             if not historical_data:
+                print("Error: No historical data generated")
                 return None
                 
             # Get current values
@@ -406,9 +421,12 @@ class CryptoAnalyzer:
                 'historical_data': historical_data
             }
             
+            print("Analysis completed successfully")
             return result
             
         except Exception as e:
+            print(f"Error in analyze_crypto: {str(e)}")
+            traceback.print_exc()
             return None
     
     def _generate_recommendation(self, trend, momentum, distance):
