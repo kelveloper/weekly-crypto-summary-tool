@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Home - Crypto Portfolio Tracker{% endblock %}
+{% block title %}Home - CoinFolio Analytics{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-8 text-center">
-        <h1 class="display-4 mb-4">Welcome to Crypto Portfolio Tracker</h1>
+        <h1 class="display-4 mb-4">Welcome to CoinFolio Analytics</h1>
         <p class="lead mb-4">Track your cryptocurrency investments and monitor your portfolio performance.</p>
         {% if current_user.is_authenticated %}
             <a href="{{ url_for('portfolio') }}" class="btn btn-primary btn-lg">View Your Portfolio</a>

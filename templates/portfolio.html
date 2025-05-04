@@ -1,236 +1,391 @@
 {% extends "base.html" %}
 
-{% block title %}Portfolio Summary - Crypto Portfolio Tracker{% endblock %}
+{% block title %}Portfolio Summary - CoinFolio Analytics{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-    {% if not transactions.items and not holdings %}
+    <!-- Welcome Message (only shown when there are no transactions and no holdings) -->
+    {% if not transactions and not holdings %}
         <div class="card mb-4">
             <div class="card-body text-center">
                 <h3 class="mb-4">Welcome to Your Portfolio!</h3>
-                <p class="mb-4">Get started by importing your portfolio or adding holdings manually.</p>
-                <div class="d-flex justify-content-center gap-3">
-                    <div class="d-inline">
-                        <input type="file" name="csv_file" id="welcomeCsvFile" accept=".csv" style="display: none;">
+                <p class="mb-4">Get started by importing your portfolio.</p>
+                <div class="d-flex justify-content-center">
+                    <form action="{{ url_for('import_csv') }}" method="POST" enctype="multipart/form-data" class="d-inline">
+                        <input type="file" name="csv_file" id="welcomeCsvFile" accept=".csv" style="display: none;" onchange="this.form.submit()">
                         <button type="button" class="btn btn-primary" onclick="document.getElementById('welcomeCsvFile').click()">
                             <i class="fas fa-file-import me-2"></i>Import CSV
                         </button>
-                    </div>
-                    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addHoldingModal">
-                        <i class="fas fa-plus me-2"></i>Add Holding
-                    </button>
+                    </form>
                 </div>
             </div>
         </div>
-    {% else %}
+    {% endif %}
+
+    <!-- Portfolio Summary (only shown when there are holdings) -->
+    {% if holdings %}
         <h2 class="mb-4 text-center">Your Crypto Portfolio</h2>
         
-        <div class="d-flex justify-content-end mb-3">
-            <div class="d-inline me-2">
-                <input type="file" name="csv_file" id="portfolioCsvFile" accept=".csv" style="display: none;">
-                <button type="button" class="btn btn-primary" onclick="document.getElementById('portfolioCsvFile').click()">
-                    <i class="fas fa-file-import me-2"></i>Import CSV
-                </button>
+        <!-- Portfolio Overview -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h3>Portfolio Overview</h3>
             </div>
-            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addHoldingModal">
-                <i class="fas fa-plus me-2"></i>Add Holding
-            </button>
-            {% if transactions.items %}
-            <form action="{{ url_for('clear_all_transactions') }}" method="POST" class="d-inline ms-2" onsubmit="return confirm('Are you sure you want to clear all transactions? This action cannot be undone.');">
-                <button type="submit" class="btn btn-danger">
-                    <i class="fas fa-trash-alt me-2"></i>Clear All Transactions
-                </button>
-            </form>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h4>Total Initial Investment</h4>
+                        <p class="h2">${{ "%.2f"|format(total_initial_investment) }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <h4>Coins</h4>
+                        <p class="h2">{{ holdings|length }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Current Holdings -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3>Current Holdings</h3>
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-outline-primary active" id="chartViewBtn">Chart View</button>
+                    <button type="button" class="btn btn-outline-primary" id="tableViewBtn">Table View</button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <!-- Chart View -->
+                <div id="holdingsChart" style="height: 400px;">
+                    <canvas id="holdingsPieChart"></canvas>
+                </div>
+                <!-- Table View -->
+                <div id="holdingsTable" class="table-responsive" style="max-height: 400px; overflow-y: auto; display: none;">
+                    <div class="mb-3">
+                        <input type="text" class="form-control" id="coinSearch" placeholder="Search coins...">
+                    </div>
+                    <table class="table table-striped table-hover mb-0" id="holdingsTableContent">
+                        <thead class="sticky-top bg-white">
+                            <tr>
+                                <th>Coin</th>
+                                <th>Quantity</th>
+                                <th>Average Price</th>
+                                <th>Total Cost</th>
+                            </tr>
+                        </thead>
+                        <tbody id="holdingsTableBody">
+                            {% for symbol, data in holdings.items() %}
+                                <tr>
+                                    <td>{{ symbol }}</td>
+                                    <td>{{ "%.4f"|format(data.quantity) }}</td>
+                                    <td>${{ "%.2f"|format(data.average_price) }}</td>
+                                    <td>${{ "%.2f"|format(data.total_cost) }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+
+    <!-- Transaction History (always visible) -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h3>Transaction History</h3>
+            <div class="text-muted">
+                {% if transactions %}
+                    Total Transactions: {{ transactions|length }}
+                {% else %}
+                    No transactions found
+                {% endif %}
+            </div>
+        </div>
+        <div class="card-body p-0">
+            {% if transactions %}
+                <!-- Group transactions by month -->
+                {% set grouped_transactions = {} %}
+                {% for transaction in transactions %}
+                    {% set month = transaction.transaction_date.strftime('%B %Y') %}
+                    {% if month not in grouped_transactions %}
+                        {% set _ = grouped_transactions.update({month: []}) %}
+                    {% endif %}
+                    {% set _ = grouped_transactions[month].append(transaction) %}
+                {% endfor %}
+
+                <!-- Display grouped transactions with scrolling -->
+                <div class="accordion" id="transactionAccordion" style="max-height: 600px; overflow-y: auto;">
+                    {% for month, month_transactions in grouped_transactions.items() %}
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="heading{{ loop.index }}">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ loop.index }}" aria-expanded="false" aria-controls="collapse{{ loop.index }}">
+                                    {{ month }} ({{ month_transactions|length }} transactions)
+                                </button>
+                            </h2>
+                            <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" aria-labelledby="heading{{ loop.index }}" data-bs-parent="#transactionAccordion">
+                                <div class="accordion-body p-0">
+                                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                                        <table class="table table-striped table-hover mb-0">
+                                            <thead class="sticky-top bg-white">
+                                                <tr>
+                                                    <th>Date</th>
+                                                    <th>Type</th>
+                                                    <th>Symbol</th>
+                                                    <th>Quantity</th>
+                                                    <th>Price</th>
+                                                    <th>Total</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for transaction in month_transactions %}
+                                                    <tr>
+                                                        <td>{{ transaction.transaction_date.strftime('%Y-%m-%d') }}</td>
+                                                        <td>{{ transaction.transaction_type }}</td>
+                                                        <td>{{ transaction.symbol }}</td>
+                                                        <td>{{ "%.4f"|format(transaction.quantity) }}</td>
+                                                        <td>${{ "%.2f"|format(transaction.purchase_price) }}</td>
+                                                        <td>${{ "%.2f"|format(transaction.quantity * transaction.purchase_price) }}</td>
+                                                        <td>
+                                                            {% if not transaction.transaction_id %}
+                                                                <div class="btn-group" role="group">
+                                                                    <a href="{{ url_for('edit_holding', id=transaction.id) }}" class="btn btn-primary btn-sm me-1">Edit</a>
+                                                                    <form action="{{ url_for('delete_transaction', transaction_id=transaction.id) }}" method="POST" style="display: inline;">
+                                                                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this transaction?')">
+                                                                            Remove
+                                                                        </button>
+                                                                    </form>
+                                                                </div>
+                                                            {% endif %}
+                                                        </td>
+                                                    </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
             {% endif %}
         </div>
-        
-        <!-- Portfolio Summary -->
-        {% if holdings %}
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h3>Portfolio Overview</h3>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <h4>Total Initial Investment</h4>
-                            <p class="h2">${{ "%.2f"|format(total_initial_investment) }}</p>
-                        </div>
-                        <div class="col-md-6">
-                            <h4>BTC Total Investment</h4>
-                            <p class="h2">${{ "%.2f"|format(btc_total_investment) }}</p>
-                            <p class="h4">Quantity: {{ "%.8f"|format(btc_quantity) }} BTC</p>
-                        </div>
+    </div>
+
+    <!-- Clear All Transactions Button (bottom right) -->
+    {% if transactions %}
+        <div class="d-flex justify-content-end mt-3">
+            <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#clearTransactionsModal">
+                <i class="fas fa-trash-alt me-2"></i>Clear All Transactions
+            </button>
+        </div>
+
+        <!-- Clear Transactions Modal -->
+        <div class="modal fade" id="clearTransactionsModal" tabindex="-1" aria-labelledby="clearTransactionsModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="clearTransactionsModalLabel">Confirm Clear All Transactions</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Are you sure you want to clear all transactions? This action cannot be undone.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <form action="{{ url_for('clear_all_transactions') }}" method="POST" class="d-inline">
+                            <button type="submit" class="btn btn-danger">
+                                <i class="fas fa-trash-alt me-2"></i>Clear All Transactions
+                            </button>
+                        </form>
                     </div>
                 </div>
             </div>
-
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h3>Current Holdings</h3>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-striped">
-                            <thead>
-                                <tr>
-                                    <th>Coin</th>
-                                    <th>Quantity</th>
-                                    <th>Average Price</th>
-                                    <th>Total Cost</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for symbol, data in holdings.items() %}
-                                    <tr>
-                                        <td>{{ symbol }}</td>
-                                        <td>{{ "%.4f"|format(data.quantity) }}</td>
-                                        <td>${{ "%.2f"|format(data.average_price) }}</td>
-                                        <td>${{ "%.2f"|format(data.total_cost) }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        {% endif %}
-
-        {% if transactions.items %}
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h3>Transaction History</h3>
-                    <div class="text-muted">
-                        Showing {{ transactions.items|length }} of {{ transactions.total }} transactions
-                    </div>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-striped">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Type</th>
-                                    <th>Symbol</th>
-                                    <th>Quantity</th>
-                                    <th>Price</th>
-                                    <th>Total</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for transaction in transactions.items %}
-                                    <tr>
-                                        <td>{{ transaction.transaction_date.strftime('%Y-%m-%d') }}</td>
-                                        <td>{{ transaction.transaction_type }}</td>
-                                        <td>{{ transaction.symbol }}</td>
-                                        <td>{{ "%.4f"|format(transaction.quantity) }}</td>
-                                        <td>${{ "%.2f"|format(transaction.purchase_price) }}</td>
-                                        <td>${{ "%.2f"|format(transaction.quantity * transaction.purchase_price) }}</td>
-                                        <td>
-                                            {% if not transaction.transaction_id %}
-                                                <div class="btn-group" role="group">
-                                                    <a href="{{ url_for('edit_holding', id=transaction.id) }}" class="btn btn-primary btn-sm me-1">Edit</a>
-                                                    <form action="{{ url_for('delete_transaction', transaction_id=transaction.id) }}" method="POST" style="display: inline;">
-                                                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this transaction?')">
-                                                            Remove
-                                                        </button>
-                                                    </form>
-                                                </div>
-                                            {% endif %}
-                                        </td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Pagination -->
-                    {% if transactions.pages > 1 %}
-                    <nav aria-label="Transaction pagination" class="mt-4">
-                        <ul class="pagination justify-content-center">
-                            {% if transactions.has_prev %}
-                                <li class="page-item">
-                                    <a class="page-link" href="{{ url_for('portfolio', page=transactions.prev_num) }}">Previous</a>
-                                </li>
-                            {% else %}
-                                <li class="page-item disabled">
-                                    <span class="page-link">Previous</span>
-                                </li>
-                            {% endif %}
-
-                            {% for page_num in transactions.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
-                                {% if page_num %}
-                                    {% if page_num == transactions.page %}
-                                        <li class="page-item active">
-                                            <span class="page-link">{{ page_num }}</span>
-                                        </li>
-                                    {% else %}
-                                        <li class="page-item">
-                                            <a class="page-link" href="{{ url_for('portfolio', page=page_num) }}">{{ page_num }}</a>
-                                        </li>
-                                    {% endif %}
-                                {% else %}
-                                    <li class="page-item disabled">
-                                        <span class="page-link">...</span>
-                                    </li>
-                                {% endif %}
-                            {% endfor %}
-
-                            {% if transactions.has_next %}
-                                <li class="page-item">
-                                    <a class="page-link" href="{{ url_for('portfolio', page=transactions.next_num) }}">Next</a>
-                                </li>
-                            {% else %}
-                                <li class="page-item disabled">
-                                    <span class="page-link">Next</span>
-                                </li>
-                            {% endif %}
-                        </ul>
-                    </nav>
-                    {% endif %}
-                </div>
-            </div>
-        {% endif %}
+        </div>
     {% endif %}
 </div>
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+    // Auto-dismiss alerts after 4 seconds
+    document.addEventListener('DOMContentLoaded', function() {
+        const alerts = document.querySelectorAll('.alert');
+        alerts.forEach(function(alert) {
+            setTimeout(function() {
+                alert.classList.remove('show');
+                setTimeout(function() {
+                    alert.remove();
+                }, 150);
+            }, 4000);
+        });
+    });
+
+    // Initialize donut chart
+    const ctx = document.getElementById('holdingsPieChart').getContext('2d');
+    const holdingsData = {{ holdings|tojson }};
+    
+    // Sort holdings by total cost and get top 10
+    const sortedHoldings = Object.entries(holdingsData)
+        .sort(([, a], [, b]) => b.total_cost - a.total_cost);
+    
+    const top10 = sortedHoldings.slice(0, 10);
+    const others = sortedHoldings.slice(10);
+    
+    const otherTotal = others.reduce((sum, [, data]) => sum + data.total_cost, 0);
+    
+    const labels = top10.map(([symbol]) => symbol);
+    const data = top10.map(([, data]) => data.total_cost);
+    
+    // Add "Other" if there are more than 10 coins
+    if (others.length > 0) {
+        labels.push('Other');
+        data.push(otherTotal);
+    }
+    
+    const pieChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: [
+                    '#E91E63',  // Pink
+                    '#2196F3',  // Blue
+                    '#FFC107',  // Amber
+                    '#4CAF50',  // Green
+                    '#9C27B0',  // Purple
+                    '#FF5722',  // Deep Orange
+                    '#00BCD4',  // Cyan
+                    '#FF9800',  // Orange
+                    '#3F51B5',  // Indigo
+                    '#009688',  // Teal
+                    '#795548'   // Brown
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '60%',
+            plugins: {
+                legend: {
+                    position: 'right',
+                    labels: {
+                        generateLabels: function(chart) {
+                            const datasets = chart.data.datasets;
+                            return chart.data.labels.map((label, i) => {
+                                const value = datasets[0].data[i];
+                                const total = datasets[0].data.reduce((a, b) => a + b, 0);
+                                const percentage = Math.round((value / total) * 100);
+                                return {
+                                    text: `${label}: $${value.toFixed(2)} (${percentage}%)`,
+                                    fillStyle: datasets[0].backgroundColor[i],
+                                    hidden: isNaN(datasets[0].data[i]) || chart.getDatasetMeta(0).data[i].hidden,
+                                    lineCap: 'butt',
+                                    lineDash: [],
+                                    lineDashOffset: 0,
+                                    lineJoin: 'miter',
+                                    lineWidth: 1,
+                                    strokeStyle: '#fff',
+                                    pointStyle: 'circle',
+                                    rotation: 0
+                                };
+                            });
+                        }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.raw || 0;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = Math.round((value / total) * 100);
+                            return `${label}: $${value.toFixed(2)} (${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Toggle between table and chart views
+    document.getElementById('tableViewBtn').addEventListener('click', function() {
+        document.getElementById('holdingsTable').style.display = 'block';
+        document.getElementById('holdingsChart').style.display = 'none';
+        this.classList.add('active');
+        document.getElementById('chartViewBtn').classList.remove('active');
+        
+        // Initialize search functionality when table view is shown
+        initializeSearch();
+    });
+
+    document.getElementById('chartViewBtn').addEventListener('click', function() {
+        document.getElementById('holdingsTable').style.display = 'none';
+        document.getElementById('holdingsChart').style.display = 'block';
+        this.classList.add('active');
+        document.getElementById('tableViewBtn').classList.remove('active');
+    });
+
+    // Search functionality
+    function initializeSearch() {
+        const searchInput = document.getElementById('coinSearch');
+        const tableBody = document.getElementById('holdingsTableBody');
+        
+        if (searchInput && tableBody) {
+            // Clear previous search
+            searchInput.value = '';
+            Array.from(tableBody.getElementsByTagName('tr')).forEach(row => {
+                row.style.display = '';
+            });
+            
+            // Add event listener
+            searchInput.addEventListener('input', function() {
+                const searchText = this.value.toLowerCase();
+                Array.from(tableBody.getElementsByTagName('tr')).forEach(row => {
+                    const coinName = row.cells[0].textContent.toLowerCase();
+                    row.style.display = coinName.includes(searchText) ? '' : 'none';
+                });
+            });
+        }
+    }
+
+    // Initialize search if table view is active
+    if (document.getElementById('holdingsTable').style.display === 'block') {
+        initializeSearch();
+    }
+
     document.getElementById('welcomeCsvFile').addEventListener('change', function() {
         if (this.files.length > 0) {
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = "{{ url_for('import_csv') }}";
-            form.enctype = 'multipart/form-data';
+            const formData = new FormData();
+            formData.append('csv_file', this.files[0]);
             
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.name = 'csv_file';
-            input.files = this.files;
-            form.appendChild(input);
-            
-            document.body.appendChild(form);
-            form.submit();
+            fetch("{{ url_for('import_csv') }}", {
+                method: 'POST',
+                body: formData
+            }).then(response => {
+                if (response.redirected) {
+                    window.location.href = response.url;
+                }
+            });
         }
     });
     
     document.getElementById('portfolioCsvFile').addEventListener('change', function() {
         if (this.files.length > 0) {
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = "{{ url_for('import_csv') }}";
-            form.enctype = 'multipart/form-data';
+            const formData = new FormData();
+            formData.append('csv_file', this.files[0]);
             
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.name = 'csv_file';
-            input.files = this.files;
-            form.appendChild(input);
-            
-            document.body.appendChild(form);
-            form.submit();
+            fetch("{{ url_for('import_csv') }}", {
+                method: 'POST',
+                body: formData
+            }).then(response => {
+                if (response.redirected) {
+                    window.location.href = response.url;
+                }
+            });
         }
     });
 </script>
