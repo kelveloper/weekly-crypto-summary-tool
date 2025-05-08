@@ -15,7 +15,7 @@ import traceback
 import ta
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.urandom(24)
+app.config['SECRET_KEY'] = 'your-secret-key-here'  # Fixed secret key
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///crypto.db'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 db = SQLAlchemy(app)
@@ -134,15 +134,20 @@ def login():
         username = request.form['username']
         password = request.form['password']
         
+        print(f"Login attempt for username: {username}")  # Debug log
+        
         # Only show error if both fields are filled
         if username and password:
             user = User.query.filter_by(username=username).first()
             if user and user.check_password(password):
+                print(f"Login successful for user: {user.id}")  # Debug log
                 login_user(user)
                 return redirect(url_for('portfolio'))
             else:
+                print("Login failed - invalid credentials")  # Debug log
                 flash('Invalid username or password', 'error')
         else:
+            print("Login failed - missing fields")  # Debug log
             flash('Please enter both username and password', 'error')
         return redirect(url_for('login'))
     return render_template('login.html')
@@ -162,19 +167,14 @@ def logout():
 @login_required
 def portfolio():
     try:
-        # Get page number from request args, default to 1
-        page = request.args.get('page', 1, type=int)
-        per_page = 20  # Increased to 20 transactions per page
+        print(f"Current user: {current_user.id}")  # Debug log
         
-        # Get paginated transactions for the current user
+        # Get all transactions for the current user in reverse chronological order
         transactions = Portfolio.query.filter_by(user_id=current_user.id)\
             .order_by(Portfolio.transaction_date.desc())\
-            .paginate(page=page, per_page=per_page, error_out=False)
-        
-        # Get all transactions for holdings calculation in reverse chronological order
-        all_transactions = Portfolio.query.filter_by(user_id=current_user.id)\
-            .order_by(Portfolio.transaction_date.desc())\
             .all()
+        
+        print(f"Total transactions found: {len(transactions)}")  # Debug log
         
         # Calculate current holdings
         holdings = {}
@@ -182,23 +182,23 @@ def portfolio():
         btc_total_investment = 0
         btc_quantity = 0.0  # Explicitly set to 0.0
         # Calculate total initial investment by summing all transaction totals
-        total_initial_investment = sum(transaction.transaction_total for transaction in all_transactions)
+        total_initial_investment = sum(transaction.transaction_total for transaction in transactions)
         
         # Group transactions by symbol
         transactions_by_symbol = {}
-        for transaction in all_transactions:
+        for transaction in transactions:
             symbol = transaction.symbol
             if symbol not in transactions_by_symbol:
                 transactions_by_symbol[symbol] = []
             transactions_by_symbol[symbol].append(transaction)
         
         # Calculate quantities for each symbol
-        for symbol, transactions in transactions_by_symbol.items():
+        for symbol, symbol_transactions in transactions_by_symbol.items():
             # Sort transactions by date (oldest first)
-            transactions.sort(key=lambda x: x.transaction_date)
+            symbol_transactions.sort(key=lambda x: x.transaction_date)
             
             running_quantity = 0.0
-            for transaction in transactions:
+            for transaction in symbol_transactions:
                 # Simply add the transaction quantity (negative for sells, positive for buys)
                 running_quantity += transaction.transaction_quantity
             
@@ -206,8 +206,8 @@ def portfolio():
             if running_quantity > 0:
                 holdings[symbol] = {
                     'quantity': running_quantity,
-                    'total_cost': sum(t.transaction_total for t in transactions),
-                    'average_price': sum(t.transaction_total for t in transactions) / running_quantity
+                    'total_cost': sum(t.transaction_total for t in symbol_transactions),
+                    'average_price': sum(t.transaction_total for t in symbol_transactions) / running_quantity
                 }
         
         # Remove holdings with zero quantity
@@ -225,8 +225,11 @@ def portfolio():
                              btc_total_investment=btc_total_investment,
                              btc_quantity=btc_quantity)
     except Exception as e:
+        print(f"Error in portfolio route: {str(e)}")  # Debug log
+        print(f"Error type: {type(e)}")  # Debug log
+        traceback.print_exc()  # Print full traceback
         flash('Error loading portfolio. Please try again later.', 'error')
-        return redirect(url_for('index'))
+        return redirect(url_for('login'))
 
 @app.route('/import_csv', methods=['POST'])
 @login_required

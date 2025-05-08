@@ -5,7 +5,7 @@
 {% block content %}
 <div class="container mt-4">
     <!-- Welcome Message (only shown when there are no transactions and no holdings) -->
-    {% if not transactions and not holdings %}
+    {% if not transactions.items and not holdings %}
         <div class="card mb-4">
             <div class="card-body text-center">
                 <h3 class="mb-4">Welcome to Your Portfolio!</h3>
@@ -114,7 +114,7 @@
                 {% endfor %}
 
                 <!-- Display grouped transactions with scrolling -->
-                <div class="accordion" id="transactionAccordion" style="max-height: 600px; overflow-y: auto;">
+                <div class="accordion" id="transactionAccordion" style="max-height: 400px; overflow-y: auto;">
                     {% for month, month_transactions in grouped_transactions.items() %}
                         <div class="accordion-item">
                             <h2 class="accordion-header" id="heading{{ loop.index }}">
@@ -124,28 +124,32 @@
                             </h2>
                             <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" aria-labelledby="heading{{ loop.index }}" data-bs-parent="#transactionAccordion">
                                 <div class="accordion-body p-0">
-                                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                                    <div class="table-responsive" style="max-height: 200px; overflow-y: auto; border: 1px solid #dee2e6;">
                                         <table class="table table-striped table-hover mb-0">
-                                            <thead class="sticky-top bg-white">
+                                            <thead class="sticky-top bg-white" style="z-index: 1;">
                                                 <tr>
-                                                    <th>Date</th>
-                                                    <th>Type</th>
-                                                    <th>Symbol</th>
-                                                    <th>Quantity</th>
-                                                    <th>Price</th>
-                                                    <th>Total</th>
-                                                    <th>Actions</th>
+                                                    <th style="position: sticky; top: 0; background: white;">Date</th>
+                                                    <th style="position: sticky; top: 0; background: white;">Type</th>
+                                                    <th style="position: sticky; top: 0; background: white;">Symbol</th>
+                                                    <th style="position: sticky; top: 0; background: white;">Quantity</th>
+                                                    <th style="position: sticky; top: 0; background: white;">Price</th>
+                                                    <th style="position: sticky; top: 0; background: white;">Total</th>
+                                                    <th style="position: sticky; top: 0; background: white;">Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {% for transaction in month_transactions %}
-                                                    <tr>
+                                                {% for transaction in month_transactions[:10] %}
+                                                    <tr style="background-color: {% if transaction.transaction_quantity < 0 or transaction.transaction_total < 0 %}#ffebee{% else %}#e8f5e9{% endif %}">
                                                         <td>{{ transaction.transaction_date.strftime('%Y-%m-%d') }}</td>
                                                         <td>{{ transaction.transaction_type }}</td>
                                                         <td>{{ transaction.symbol }}</td>
-                                                        <td>{{ "%.4f"|format(transaction.quantity) }}</td>
-                                                        <td>${{ "%.2f"|format(transaction.purchase_price) }}</td>
-                                                        <td>${{ "%.2f"|format(transaction.quantity * transaction.purchase_price) }}</td>
+                                                        <td style="color: {% if transaction.transaction_quantity < 0 %}#d32f2f{% else %}#2e7d32{% endif %}">
+                                                            {{ "%.4f"|format(transaction.transaction_quantity) }}
+                                                        </td>
+                                                        <td>${{ "%.2f"|format(transaction.transaction_price) }}</td>
+                                                        <td style="color: {% if transaction.transaction_total < 0 %}#d32f2f{% else %}#2e7d32{% endif %}">
+                                                            ${{ "%.2f"|format(transaction.transaction_total) }}
+                                                        </td>
                                                         <td>
                                                             {% if not transaction.transaction_id %}
                                                                 <div class="btn-group" role="group">
