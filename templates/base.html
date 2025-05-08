@@ -242,6 +242,131 @@
             .card {
                 margin-bottom: 1rem;
             }
+
+            /* Mobile Navigation */
+            .navbar {
+                padding: 0.5rem 0;
+            }
+
+            .navbar-brand {
+                font-size: 1.2rem;
+            }
+
+            .nav-link {
+                padding: 0.5rem;
+                font-size: 0.9rem;
+            }
+
+            /* Mobile Cards */
+            .card-header {
+                padding: 1rem;
+            }
+
+            .card-body {
+                padding: 1rem;
+            }
+
+            /* Mobile Tables */
+            .table-responsive {
+                margin: 0 -1rem;
+            }
+
+            .table th, .table td {
+                padding: 0.75rem;
+                font-size: 0.9rem;
+            }
+
+            /* Mobile Forms */
+            .form-control {
+                font-size: 16px; /* Prevents zoom on iOS */
+                padding: 0.5rem;
+            }
+
+            /* Mobile Buttons */
+            .btn {
+                padding: 0.5rem 0.75rem;
+                font-size: 0.9rem;
+            }
+
+            /* Mobile Loading Screen */
+            .loading-title {
+                font-size: 1.5rem;
+            }
+
+            .loading-subtitle {
+                font-size: 0.9rem;
+            }
+
+            /* Mobile Alerts */
+            .alert {
+                min-width: auto;
+                width: 90%;
+                margin: 0.5rem;
+                font-size: 0.9rem;
+            }
+        }
+
+        /* Additional Mobile Optimizations */
+        @media (max-width: 576px) {
+            .container {
+                padding: 0.5rem;
+            }
+
+            .card {
+                border-radius: 8px;
+            }
+
+            .table th, .table td {
+                padding: 0.5rem;
+                font-size: 0.85rem;
+            }
+
+            .btn-group {
+                display: flex;
+                flex-direction: column;
+                gap: 0.25rem;
+            }
+
+            .btn-group .btn {
+                width: 100%;
+                margin: 0;
+            }
+
+            /* Improve touch targets */
+            .nav-link, .btn, .form-control {
+                min-height: 44px;
+            }
+
+            /* Stack buttons vertically on mobile */
+            .d-flex {
+                flex-direction: column;
+            }
+
+            .d-flex .btn {
+                margin: 0.25rem 0;
+                width: 100%;
+            }
+        }
+
+        /* Fix for iOS input zoom */
+        @supports (-webkit-touch-callout: none) {
+            input[type="text"],
+            input[type="email"],
+            input[type="password"],
+            input[type="number"],
+            input[type="tel"],
+            input[type="url"],
+            input[type="search"],
+            input[type="date"],
+            input[type="datetime-local"],
+            input[type="month"],
+            input[type="week"],
+            input[type="time"],
+            input[type="color"],
+            select,
+            textarea {
+                font-size: 16px !important;
+            }
         }
     </style>
 </head>
@@ -271,11 +396,6 @@
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('portfolio') }}">
                                 <i class="fas fa-wallet me-1"></i>Portfolio
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('weekly_summary') }}">
-                                <i class="fas fa-chart-bar me-1"></i>Test
                             </a>
                         </li>
                         <li class="nav-item">
