@@ -71,8 +71,6 @@ def load_user(user_id):
 
 @app.route('/')
 def index():
-    if current_user.is_authenticated:
-        return redirect(url_for('portfolio'))
     return redirect(url_for('login'))
 
 @app.route('/register', methods=['GET', 'POST'])
