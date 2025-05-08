@@ -65,20 +65,6 @@ class WeeklyMACD(db.Model):
     def __repr__(self):
         return f'<WeeklyMACD {self.symbol} {self.date}>'
 
-# Create database tables
-with app.app_context():
-    db.create_all()
-    print("Database tables created successfully.")
-    # Check if there's at least one user
-    if not User.query.first():
-        # Create a default user
-        default_user = User(username='admin', email='admin@example.com')
-        default_user.set_password('admin')
-        db.session.add(default_user)
-        db.session.commit()
-        print("Default user created.")
-    print(f"Found {User.query.count()} users in the database.")
-
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -176,18 +162,19 @@ def logout():
 @login_required
 def portfolio():
     try:
-        # Get all transactions for the current user
+        # Get page number from request args, default to 1
+        page = request.args.get('page', 1, type=int)
+        per_page = 20  # Increased to 20 transactions per page
+        
+        # Get paginated transactions for the current user
         transactions = Portfolio.query.filter_by(user_id=current_user.id)\
             .order_by(Portfolio.transaction_date.desc())\
-            .all()
+            .paginate(page=page, per_page=per_page, error_out=False)
         
-        # Debug logging
-        print("\n=== Transactions Debug Info ===")
-        print(f"Number of transactions: {len(transactions)}")
-        print("First few transactions:")
-        for t in transactions[:3]:
-            print(f"  - {t.symbol}: {t.quantity} @ ${t.purchase_price}")
-        print("=============================\n")
+        # Get all transactions for holdings calculation in reverse chronological order
+        all_transactions = Portfolio.query.filter_by(user_id=current_user.id)\
+            .order_by(Portfolio.transaction_date.desc())\
+            .all()
         
         # Calculate current holdings
         holdings = {}
@@ -195,23 +182,23 @@ def portfolio():
         btc_total_investment = 0
         btc_quantity = 0.0  # Explicitly set to 0.0
         # Calculate total initial investment by summing all transaction totals
-        total_initial_investment = sum(transaction.transaction_total for transaction in transactions)
+        total_initial_investment = sum(transaction.transaction_total for transaction in all_transactions)
         
         # Group transactions by symbol
         transactions_by_symbol = {}
-        for transaction in transactions:
+        for transaction in all_transactions:
             symbol = transaction.symbol
             if symbol not in transactions_by_symbol:
                 transactions_by_symbol[symbol] = []
             transactions_by_symbol[symbol].append(transaction)
         
         # Calculate quantities for each symbol
-        for symbol, symbol_transactions in transactions_by_symbol.items():
+        for symbol, transactions in transactions_by_symbol.items():
             # Sort transactions by date (oldest first)
-            symbol_transactions.sort(key=lambda x: x.transaction_date)
+            transactions.sort(key=lambda x: x.transaction_date)
             
             running_quantity = 0.0
-            for transaction in symbol_transactions:
+            for transaction in transactions:
                 # Simply add the transaction quantity (negative for sells, positive for buys)
                 running_quantity += transaction.transaction_quantity
             
@@ -219,8 +206,8 @@ def portfolio():
             if running_quantity > 0:
                 holdings[symbol] = {
                     'quantity': running_quantity,
-                    'total_cost': sum(t.transaction_total for t in symbol_transactions),
-                    'average_price': sum(t.transaction_total for t in symbol_transactions) / running_quantity
+                    'total_cost': sum(t.transaction_total for t in transactions),
+                    'average_price': sum(t.transaction_total for t in transactions) / running_quantity
                 }
         
         # Remove holdings with zero quantity
@@ -238,9 +225,8 @@ def portfolio():
                              btc_total_investment=btc_total_investment,
                              btc_quantity=btc_quantity)
     except Exception as e:
-        print(f"Error in portfolio route: {str(e)}")
         flash('Error loading portfolio. Please try again later.', 'error')
-        return redirect(url_for('login'))
+        return redirect(url_for('index'))
 
 @app.route('/import_csv', methods=['POST'])
 @login_required
@@ -262,6 +248,14 @@ def import_csv():
         # Read the file content
         content = file.read().decode('utf-8')
         lines = content.split('\n')
+        
+        # Print file information
+        print("\n=== CSV File Information ===")
+        print(f"Total lines in file: {len(lines)}")
+        print("\nFirst 5 lines:")
+        for i, line in enumerate(lines[:5], 1):
+            print(f"Line {i}: {line.strip()}")
+        print("=======================\n")
         
         # Check for existing transactions
         existing_transactions = set()
@@ -286,6 +280,7 @@ def import_csv():
                     symbol = parts[3].strip()
                     quantity = float(parts[4].strip())
                     price = float(parts[6].replace('$', '').replace(',', '').strip())
+                    # Get the total from the "Total (inclusive of fees and/or spread)" column
                     total = float(parts[8].replace('$', '').replace(',', '').strip())
                     
                     # Check if transaction already exists
@@ -298,6 +293,7 @@ def import_csv():
                     try:
                         transaction_date = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S UTC').date()
                     except ValueError:
+                        # Try alternative format if the first one fails
                         transaction_date = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S').date()
                     
                     # Create a new portfolio entry
@@ -312,29 +308,32 @@ def import_csv():
                         transaction_date=transaction_date,
                         transaction_price=price,
                         transaction_quantity=quantity,
-                        transaction_fee=0.0,
+                        transaction_fee=0.0,  # Default to 0 if not available
                         transaction_total=total
                     )
                     new_transactions.append(holding)
+                    print(f"Found new transaction: {holding.symbol} - {holding.quantity} @ ${holding.purchase_price} on {holding.transaction_date}")
             except Exception as e:
+                print(f"Error processing line: {str(e)}")
+                print(f"Problematic line: {line}")
                 continue
+        
+        if duplicate_count > 0:
+            flash(f'Skipped {duplicate_count} duplicate transactions', 'warning')
         
         if new_transactions:
             for holding in new_transactions:
                 db.session.add(holding)
             db.session.commit()
-            if duplicate_count > 0:
-                flash(f'Successfully imported {len(new_transactions)} new transactions (skipped {duplicate_count} duplicates)', 'success')
-            else:
-                flash(f'Successfully imported {len(new_transactions)} new transactions!', 'success')
+            print(f"Successfully imported {len(new_transactions)} new transactions")
+            flash(f'Successfully imported {len(new_transactions)} new transactions!', 'success')
         else:
-            if duplicate_count > 0:
-                flash(f'No new transactions to import (skipped {duplicate_count} duplicates)', 'warning')
-            else:
-                flash('No new transactions to import', 'error')
+            print("No new transactions found in CSV file")
+            flash('No new transactions to import', 'error')
             
     except Exception as e:
         db.session.rollback()
+        print(f"Error importing CSV: {str(e)}")
         flash(f'Error importing CSV: {str(e)}', 'error')
     
     return redirect(url_for('portfolio'))
@@ -498,6 +497,8 @@ def macd_analysis_copy():
         # Get analysis data for the selected coin
         result = analyzer.analyze_crypto(selected_coin)
         if result is None:
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'error': 'No data available'}), 404
             return render_template('macd_analysis_copy.html', error="No data available")
         
         # Prepare data for template
@@ -522,6 +523,16 @@ def macd_analysis_copy():
         for transaction in Portfolio.query.filter_by(user_id=current_user.id).all():
             portfolio_coins.add(transaction.symbol)
         
+        # If it's an AJAX request, return JSON data
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({
+                'analysis': analysis,
+                'weekly_data': weekly_data,
+                'portfolio_coins': list(portfolio_coins),
+                'current_coin': selected_coin
+            })
+        
+        # Otherwise, render the template
         return render_template('macd_analysis_copy.html',
                              analysis=analysis,
                              weekly_data=weekly_data,
@@ -531,7 +542,17 @@ def macd_analysis_copy():
     except Exception as e:
         print(f"Error in macd_analysis_copy: {str(e)}")
         traceback.print_exc()
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'error': str(e)}), 500
         return render_template('macd_analysis_copy.html', error=str(e), weekly_data=[])
 
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+        # Check for existing users
+        users = User.query.all()
+        if not users:
+            print("No users found in the database. Please register a new user.")
+        else:
+            print(f"Found {len(users)} users in the database.")
     app.run(debug=True, host='0.0.0.0', port=5001) 

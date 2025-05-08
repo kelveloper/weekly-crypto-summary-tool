@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ current_coin }} MACD Analysis{% endblock %}
+{% block title %}{{ current_coin }} Technical Analysis{% endblock %}
 
 {% block content %}
 <style>
@@ -13,13 +13,133 @@
         --light-green: #e6ffe6;
         --light-red: #ffe6e6;
         --light-yellow: rgba(255, 204, 0, 0.2);
+        --dark-green: #006400;  /* Added darker green */
+        --dark-red: #8B0000;    /* Added darker red */
+    }
+
+    .indicator-selector {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 2rem;
+        flex-wrap: wrap;
+        transition: all 0.3s ease;
+    }
+
+    .indicator-selector.hidden {
+        display: none;
+    }
+
+    .indicator-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        flex: 1;
+        min-width: 300px;
+    }
+
+    .indicator-card h4 {
+        margin-bottom: 1rem;
+        color: var(--apple-dark);
+    }
+
+    .indicator-options {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .indicator-option {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .indicator-option input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+
+    .indicator-option label {
+        cursor: pointer;
+        font-weight: 500;
+    }
+
+    .indicator-params {
+        margin-left: 2rem;
+        margin-top: 0.5rem;
+        display: none;
+    }
+
+    .indicator-params.active {
+        display: block;
+    }
+
+    .param-group {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .param-group label {
+        min-width: 100px;
+    }
+
+    .param-group input {
+        width: 80px;
+        padding: 0.25rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+
+    .combine-btn {
+        background: var(--coinbase-blue);
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.3s;
+    }
+
+    .combine-btn:hover {
+        background: var(--coinbase-dark-blue);
+        transform: translateY(-1px);
+    }
+
+    .combine-btn:disabled {
+        background: #ccc;
+        cursor: not-allowed;
     }
 
     .coin-selector {
-        display: flex;
+        display: none;  /* Hide initially */
         gap: 0.5rem;
         margin-bottom: 1rem;
         flex-wrap: wrap;
+        align-items: center;
+        opacity: 1;  /* Changed from 0 to 1 */
+        transform: none;  /* Removed translateY */
+        transition: all 0.3s ease;
+        padding: 1rem;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .coin-selector.active {
+        display: flex;  /* Show when active */
+        opacity: 1;
+        transform: none;  /* Removed translateY */
+    }
+
+    .coin-selector-text {
+        color: var(--apple-dark);
+        opacity: 1;  /* Changed from 0.8 to 1 */
+        margin-right: 1rem;
+        font-weight: 500;
     }
 
     .coin-btn {
@@ -30,220 +150,925 @@
         color: var(--coinbase-blue);
         cursor: pointer;
         transition: all 0.3s;
+        display: inline-block;  /* Changed from flex to inline-block */
+        font-weight: 500;
     }
 
     .coin-btn:hover {
         background: var(--coinbase-blue);
         color: white;
+        transform: translateY(-1px);
     }
 
     .coin-btn.active {
         background: var(--coinbase-blue);
         color: white;
     }
+
+    .coin-btn.reloading {
+        opacity: 0.7;
+        cursor: wait;
+    }
+
+    .threshold-group {
+        margin-top: 0.5rem;
+        padding: 0.5rem;
+        background: var(--apple-gray);
+        border-radius: 4px;
+    }
+
+    .threshold-group label {
+        font-size: 0.9rem;
+        color: var(--apple-dark);
+    }
+
+    .threshold-group input {
+        width: 60px;
+        padding: 0.25rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+
+    .mode-selector {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 2rem;
+        transition: all 0.3s ease;
+    }
+
+    .mode-selector.hidden {
+        display: none;
+    }
+
+    .mode-btn {
+        flex: 1;
+        padding: 1rem;
+        border: 2px solid var(--coinbase-blue);
+        border-radius: 12px;
+        background: white;
+        color: var(--coinbase-blue);
+        cursor: pointer;
+        transition: all 0.3s;
+        text-align: center;
+    }
+
+    .mode-btn:hover {
+        background: var(--coinbase-blue);
+        color: white;
+    }
+
+    .mode-btn.active {
+        background: var(--coinbase-blue);
+        color: white;
+    }
+
+    .mode-btn i {
+        font-size: 1.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .mode-btn h4 {
+        margin: 0;
+        font-size: 1.2rem;
+    }
+
+    .mode-btn p {
+        margin: 0.5rem 0 0;
+        font-size: 0.9rem;
+        opacity: 0.8;
+    }
+
+    .advanced-options {
+        display: none;
+    }
+
+    .advanced-options.active {
+        display: block;
+    }
+
+    .preset-thresholds {
+        background: var(--apple-gray);
+        padding: 1rem;
+        border-radius: 8px;
+        margin-top: 1rem;
+    }
+
+    .preset-thresholds h5 {
+        margin-bottom: 0.5rem;
+        color: var(--apple-dark);
+    }
+
+    .preset-thresholds p {
+        margin: 0;
+        font-size: 0.9rem;
+        color: var(--apple-dark);
+        opacity: 0.8;
+    }
+
+    .action-btn {
+        width: 100%;
+        padding: 1rem;
+        border: none;
+        border-radius: 8px;
+        background: var(--coinbase-blue);
+        color: white;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+
+    .action-btn:hover {
+        background: var(--coinbase-dark-blue);
+        transform: translateY(-1px);
+    }
+
+    .action-btn:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    .action-btn i {
+        font-size: 1.2rem;
+    }
+
+    .action-btn.combo {
+        background: var(--success-green);
+    }
+
+    .action-btn.combo:hover {
+        background: #00b32b;
+    }
+
+    .analysis-section {
+        display: none;  /* Hide initially */
+    }
+
+    .analysis-section.active {
+        display: block;  /* Show when active */
+    }
+
+    .selected-indicators {
+        background: var(--apple-gray);
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+
+    .selected-indicators h5 {
+        margin-bottom: 0.5rem;
+        color: var(--apple-dark);
+    }
+
+    .selected-indicators .badge {
+        font-size: 0.9rem;
+        padding: 0.5rem 1rem;
+        margin-right: 0.5rem;
+        background: var(--coinbase-blue);
+    }
+
+    .feature-coming-soon {
+        background: var(--apple-gray);
+        border-radius: 12px;
+        padding: 2rem;
+        text-align: center;
+        margin: 2rem 0;
+        display: none;
+    }
+
+    .feature-coming-soon.active {
+        display: block;
+    }
+
+    .feature-coming-soon i {
+        font-size: 3rem;
+        color: var(--coinbase-blue);
+        margin-bottom: 1rem;
+    }
+
+    .feature-coming-soon h3 {
+        color: var(--apple-dark);
+        margin-bottom: 1rem;
+    }
+
+    .feature-coming-soon p {
+        color: var(--apple-dark);
+        opacity: 0.8;
+        margin-bottom: 0;
+    }
+
+    .feature-coming-soon .badge {
+        background: var(--coinbase-blue);
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        margin-top: 1rem;
+    }
+
+    .back-btn {
+        background: var(--apple-gray);
+        color: var(--apple-dark);
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .back-btn:hover {
+        background: #e5e5e5;
+    }
+
+    .back-btn i {
+        font-size: 1rem;
+    }
+
+    /* Add hover effect for historical rows */
+    .historical-row {
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+    }
+
+    .historical-row:hover {
+        background-color: rgba(0, 82, 255, 0.1) !important;
+    }
+
+    /* Ensure the analysis section is visible */
+    .analysis-section {
+        display: block !important;
+    }
+
+    .historical-row td {
+        color: inherit;
+    }
+
+    .historical-row[data-market-message='true'] td {
+        color: white;
+    }
+
+    .stablecoin-message {
+        text-align: center;
+        padding: 2rem;
+        background: var(--apple-gray);
+        border-radius: 12px;
+        margin: 2rem 0;
+    }
+
+    .stablecoin-message img {
+        max-width: 300px;
+        border-radius: 8px;
+        margin: 1rem 0;
+    }
+
+    .stablecoin-message h3 {
+        color: var(--apple-dark);
+        margin-bottom: 1rem;
+    }
+
+    .stablecoin-message p {
+        color: var(--apple-dark);
+        opacity: 0.8;
+        margin-bottom: 0.5rem;
+    }
 </style>
 
 <div class="container mt-4">
-    <h2 class="mb-4">{{ current_coin }} Weekly MACD Analysis</h2>
-    
-    {% if error %}
-        <div class="alert alert-danger">{{ error }}</div>
-    {% else %}
-        <!-- Coin Selector -->
-        <div class="coin-selector">
-            {% for coin in portfolio_coins %}
-                {% if coin != 'USD' %}
-                    <button class="coin-btn {% if coin == current_coin %}active{% endif %}" data-coin="{{ coin }}">
-                        {{ coin }}
-                    </button>
-                {% endif %}
-            {% endfor %}
+    <h2 class="mb-4" id="pageTitle">Technical Analysis</h2>
+
+    <!-- Back Button (hidden initially) -->
+    <button class="back-btn" id="backBtn" style="display: none;">
+        <i class="fas fa-arrow-left"></i>
+        Back to Analysis Setup
+    </button>
+
+    <!-- Coin Selector (moved to top) -->
+    <div class="coin-selector" id="coinSelector" style="display: none; margin-bottom: 2rem;">
+        <span class="coin-selector-text">Select a coin to analyze:</span>
+        {% for coin in portfolio_coins %}
+            {% if coin != 'USD' %}
+                <button class="coin-btn {% if coin == current_coin %}active{% endif %}" data-coin="{{ coin }}">
+                    {{ coin }}
+                </button>
+            {% endif %}
+        {% endfor %}
+    </div>
+
+    <!-- Mode Selector -->
+    <div class="mode-selector" id="modeSelector">
+        <button class="mode-btn" id="basicMode" onclick="showBasicMode()">
+            <i class="fas fa-chart-line"></i>
+            <h4>Basic Analysis</h4>
+            <p>Pre-configured settings for quick analysis</p>
+        </button>
+        <button class="mode-btn" id="advancedMode" onclick="showAdvancedMode()">
+            <i class="fas fa-sliders-h"></i>
+            <h4>Advanced Analysis</h4>
+            <p>Customize all parameters and thresholds</p>
+        </button>
+    </div>
+
+    <!-- Indicator Selector -->
+    <div class="indicator-selector" id="indicatorSelector" style="display: none;">
+        <div class="indicator-card">
+            <h4>Select Indicators</h4>
+            <div class="indicator-options">
+                <div class="indicator-option">
+                    <input type="checkbox" id="macd" name="indicator" value="macd" onchange="handleIndicatorChange(this)">
+                    <label for="macd">MACD</label>
+                    <div class="indicator-params" id="macd-params" style="display: none;">
+                        <div class="preset-thresholds">
+                            <h5>Recommended Settings</h5>
+                            <p>Fast Period: 12 | Slow Period: 26 | Signal Period: 9</p>
+                            <p>Signal Threshold: 0.0001</p>
+                        </div>
+                        <div class="advanced-options" style="display: none;">
+                            <div class="param-group">
+                                <label>Fast Period:</label>
+                                <input type="number" value="12" min="1" max="50">
+                            </div>
+                            <div class="param-group">
+                                <label>Slow Period:</label>
+                                <input type="number" value="26" min="1" max="100">
+                            </div>
+                            <div class="param-group">
+                                <label>Signal Period:</label>
+                                <input type="number" value="9" min="1" max="50">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="indicator-option">
+                    <input type="checkbox" id="rsi" name="indicator" value="rsi" onchange="handleIndicatorChange(this)">
+                    <label for="rsi">RSI</label>
+                    <div class="indicator-params" id="rsi-params" style="display: none;">
+                        <div class="preset-thresholds">
+                            <h5>Recommended Settings</h5>
+                            <p>Period: 14</p>
+                            <p>Overbought: 70 | Oversold: 30</p>
+                        </div>
+                        <div class="advanced-options" style="display: none;">
+                            <div class="param-group">
+                                <label>Period:</label>
+                                <input type="number" value="14" min="1" max="50">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="indicator-option">
+                    <input type="checkbox" id="bollinger" name="indicator" value="bollinger" onchange="handleIndicatorChange(this)">
+                    <label for="bollinger">Bollinger Bands</label>
+                    <div class="indicator-params" id="bollinger-params" style="display: none;">
+                        <div class="preset-thresholds">
+                            <h5>Recommended Settings</h5>
+                            <p>Period: 20 | Std Dev: 2</p>
+                        </div>
+                        <div class="advanced-options" style="display: none;">
+                            <div class="param-group">
+                                <label>Period:</label>
+                                <input type="number" value="20" min="1" max="50">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="indicator-card">
+            <h4>Analysis Action</h4>
+            <p class="text-muted mb-3">Select indicators to analyze</p>
+            <button class="action-btn" id="actionBtn" onclick="handleAnalysisAction()" disabled>
+                <i class="fas fa-chart-line"></i>
+                <span>Select an Indicator</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Analysis Section (hidden initially) -->
+    <div class="analysis-section" id="analysisSection" style="display: none;">
+        <!-- Selected Indicators Summary -->
+        <div class="selected-indicators" style="display: none;">
+            <h5>Selected Indicators:</h5>
+            <div id="selectedIndicatorsList"></div>
         </div>
 
-        {% if current_coin in ['USDT', 'USDC', 'DAI', 'BUSD', 'TUSD', 'USDP', 'USDD', 'FRAX', 'GUSD', 'LUSD', 'MIM', 'USTC', 'USN', 'USDK', 'USDS', 'USDTZ', 'USX', 'USDT+', 'USDT.e', 'USDC.e', 'DAI.e'] %}
-            <!-- Stablecoin Message -->
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h3 class="mb-0">Stablecoin Alert! 🚨</h3>
-                </div>
-                <div class="card-body text-center">
-                    <div class="alert alert-info">
-                        <h4>🤔 Analyzing {{ current_coin }}...</h4>
+        <!-- Feature Coming Soon Message -->
+        <div class="feature-coming-soon" id="featureComingSoon" style="display: none;">
+            <i class="fas fa-rocket"></i>
+            <h3>Combining Indicators Coming Soon!</h3>
+            <p>We're working on bringing you the ability to combine multiple technical indicators for more powerful analysis.</p>
+            <span class="badge">In Development</span>
+        </div>
+
+        <!-- Analysis Content -->
+        <div id="analysisContent" style="display: none;">
+            {% if error %}
+                <div class="alert alert-danger">{{ error }}</div>
+            {% else %}
+                {% if current_coin in ['USDT', 'USDC', 'DAI', 'BUSD', 'TUSD', 'USDP', 'USDD', 'FRAX', 'GUSD', 'LUSD', 'MIM', 'USTC', 'USN', 'USDK', 'USDS', 'USDTZ', 'USX', 'USDT+', 'USDT.e', 'USDC.e', 'DAI.e'] %}
+                    <!-- Stablecoin Message -->
+                    <div class="stablecoin-message">
+                        <h3>🤔 Analyzing {{ current_coin }}...</h3>
                         <p class="lead">Wait a minute... This is a stablecoin! 🤦‍♂️</p>
-                        <p>MACD analysis for {{ current_coin }} is like trying to predict the weather in a climate-controlled room.</p>
+                        <p>Technical analysis for {{ current_coin }} is like trying to predict the weather in a climate-controlled room.</p>
                         <p>It's always $1.00, just like my bank account after paying rent! 😅</p>
                         <p>Maybe try analyzing a coin that actually moves? Just a suggestion! 😉</p>
+                        <img src="https://media.giphy.com/media/3o7TKSjRrfIPjeiVyM/giphy.gif" alt="Stablecoin Meme" class="img-fluid rounded">
                     </div>
-                    <img src="https://media.giphy.com/media/3o7TKSjRrfIPjeiVyM/giphy.gif" alt="Stablecoin Meme" class="img-fluid rounded" style="max-width: 300px;">
-                </div>
-            </div>
-        {% else %}
-            <!-- MACD Chart -->
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h3 class="mb-0">MACD Chart</h3>
-                </div>
-                <div class="card-body">
-                    <div class="chart-container" style="height: 500px; width: 100%;">
-                        <canvas id="macdChart"></canvas>
+                {% else %}
+                    <!-- MACD Chart -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h3 class="mb-0">MACD Chart</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container" style="height: 500px; width: 100%;">
+                                <canvas id="macdChart"></canvas>
+                            </div>
+                            <div class="text-center mt-2" style="color: #6E6E73; font-size: 0.9rem;">
+                                Monday's of the Week
+                            </div>
+                        </div>
                     </div>
-                    <div class="text-center mt-2" style="color: #6E6E73; font-size: 0.9rem;">
-                        Monday's of the Week
-                    </div>
-                </div>
-            </div>
 
-            <!-- Current Week Analysis -->
-            <div class="card mb-4" id="currentWeekCard">
-                <div class="card-header">
-                    <h3 class="mb-0">Selected Week Analysis</h3>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <h4>Weekly Performance</h4>
+                    <!-- Current Week Analysis -->
+                    <div class="card mb-4" id="currentWeekCard" style="display: none;">
+                        <div class="card-header">
+                            <h3 class="mb-0">Selected Week Analysis</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h4>Weekly Performance</h4>
+                                    <div class="table-responsive">
+                                        <table class="table">
+                                            <tr>
+                                                <th>Date:</th>
+                                                <td id="selectedDate">{{ analysis.current_week_data.date_formatted }}</td>
+                                            </tr>
+                                            <tr>
+                                                <th>Price:</th>
+                                                <td id="selectedPrice">${{ "%.2f"|format(analysis.current_week_data.price) }}</td>
+                                            </tr>
+                                            <tr>
+                                                <th>MACD:</th>
+                                                <td id="selectedMACD">{{ "%.4f"|format(analysis.current_week_data.macd) }}</td>
+                                            </tr>
+                                            <tr>
+                                                <th>Signal:</th>
+                                                <td id="selectedSignal">{{ "%.4f"|format(analysis.current_week_data.signal) }}</td>
+                                            </tr>
+                                            <tr>
+                                                <th>Distance:</th>
+                                                <td id="selectedDistance" class="{% if analysis.current_week_data.distance > 0 %}text-success{% else %}text-danger{% endif %}">
+                                                    {{ "%.4f"|format(analysis.current_week_data.distance) }}
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th>Trend:</th>
+                                                <td>
+                                                    <span id="selectedTrend" class="badge {% if analysis.current_week_data.distance > 0 %}bg-success{% else %}bg-danger{% endif %}">
+                                                        {{ 'Bullish' if analysis.current_week_data.distance > 0 else 'Bearish' }}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <h4>Analysis & Recommendation</h4>
+                                    <div class="analysis-section">
+                                        <h5>Current Status:</h5>
+                                        <p id="selectedStatus" class="{% if analysis.current_week_data.distance > 0 %}text-success{% else %}text-danger{% endif %}">
+                                            {% if analysis.current_week_data.distance > 0 %}
+                                                {% if analysis.previous_week_data and analysis.previous_week_data.distance <= 0 %}
+                                                    <strong>Golden Cross Alert!</strong> MACD has crossed above the signal line.
+                                                {% else %}
+                                                    Bullish trend continuing. MACD remains above signal line.
+                                                {% endif %}
+                                            {% else %}
+                                                {% if analysis.previous_week_data and analysis.previous_week_data.distance > 0 %}
+                                                    <strong>Death Cross Alert!</strong> MACD has crossed below the signal line.
+                                                {% else %}
+                                                    Bearish trend continuing. MACD remains below signal line.
+                                                {% endif %}
+                                            {% endif %}
+                                        </p>
+                                        <h5>Recommendation:</h5>
+                                        <p id="selectedRecommendation" class="{% if analysis.current_week_data.distance > 0 %}text-success{% else %}text-danger{% endif %}">
+                                            {% if analysis.current_week_data.distance > 0 %}
+                                                {% if analysis.previous_week_data and analysis.previous_week_data.distance <= 0 %}
+                                                    Consider entering a long position as momentum is shifting bullish.
+                                                {% else %}
+                                                    Maintain long positions as the bullish trend continues.
+                                                {% endif %}
+                                            {% else %}
+                                                {% if analysis.previous_week_data and analysis.previous_week_data.distance > 0 %}
+                                                    Consider exiting long positions as momentum is shifting bearish.
+                                                {% else %}
+                                                    Maintain short positions or stay on the sidelines as the bearish trend continues.
+                                                {% endif %}
+                                            {% endif %}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Historical Analysis -->
+                    <div class="card mb-4" style="display: none;">
+                        <div class="card-header">
+                            <h3 class="mb-0">Historical Analysis (2024-2025)</h3>
+                        </div>
+                        <div class="card-body">
                             <div class="table-responsive">
-                                <table class="table">
-                                    <tr>
-                                        <th>Date:</th>
-                                        <td id="selectedDate">{{ analysis.current_week_data.date_formatted }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Price:</th>
-                                        <td id="selectedPrice">${{ "%.2f"|format(analysis.current_week_data.price) }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th>MACD:</th>
-                                        <td id="selectedMACD">{{ "%.4f"|format(analysis.current_week_data.macd) }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Signal:</th>
-                                        <td id="selectedSignal">{{ "%.4f"|format(analysis.current_week_data.signal) }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Distance:</th>
-                                        <td id="selectedDistance" class="{% if analysis.current_week_data.distance > 0 %}text-success{% else %}text-danger{% endif %}">
-                                            {{ "%.4f"|format(analysis.current_week_data.distance) }}
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <th>Trend:</th>
-                                        <td>
-                                            <span id="selectedTrend" class="badge {% if analysis.current_week_data.distance > 0 %}bg-success{% else %}bg-danger{% endif %}">
-                                                {{ 'Bullish' if analysis.current_week_data.distance > 0 else 'Bearish' }}
-                                            </span>
-                                        </td>
-                                    </tr>
+                                <table class="table table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Price</th>
+                                            <th>MACD</th>
+                                            <th>Signal</th>
+                                            <th>Distance</th>
+                                            <th>Trend</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for week in weekly_data %}
+                                            {% if week.monday_date.startswith('2024') or week.monday_date.startswith('2025') %}
+                                            <tr class="historical-row" 
+                                                data-index="{{ loop.index0 }}"
+                                                data-date="{{ week.monday_date }}"
+                                                data-price="{{ week.price }}"
+                                                data-macd="{{ week.macd }}"
+                                                data-signal="{{ week.signal }}"
+                                                data-distance="{{ week.distance }}"
+                                                data-market-message="{% if week.market_message %}true{% else %}false{% endif %}"
+                                                {% if week.market_message %}
+                                                    style="background-color: {% if week.trend == 'Bullish' %}var(--dark-green){% else %}var(--dark-red){% endif %};"
+                                                {% elif week.is_reversal or week.special_recommendation %}
+                                                    {% if week.highlight_color == 'lightgreen' %}
+                                                        style="background-color: var(--light-green);"
+                                                    {% elif week.highlight_color == 'lightred' %}
+                                                        style="background-color: var(--light-red);"
+                                                    {% elif week.highlight_color == 'lightyellow' %}
+                                                        style="background-color: var(--light-yellow);"
+                                                    {% endif %}
+                                                {% endif %}>
+                                                <td>{{ week.monday_date }}</td>
+                                                <td>${{ "%.2f"|format(week.price) }}</td>
+                                                <td>{{ "%.4f"|format(week.macd) }}</td>
+                                                <td>{{ "%.4f"|format(week.signal) }}</td>
+                                                <td>{{ "%.4f"|format(week.distance) }}</td>
+                                                <td>
+                                                    <span style="color: {% if week.market_message %}white{% else %}{% if week.trend == 'Bullish' %}var(--dark-green){% else %}var(--dark-red){% endif %}{% endif %}; font-weight: bold;">
+                                                        {{ week.trend }}
+                                                    </span>
+                                                    {% if week.market_message %}
+                                                        <br><small style="color: white; font-weight: bold; font-size: 1.1em;">{{ week.market_message }}</small>
+                                                    {% elif week.special_recommendation %}
+                                                        <br><small style="color: {% if week.highlight_color == 'lightgreen' %}var(--dark-green){% elif week.highlight_color == 'lightred' %}var(--dark-red){% else %}#6E6E73{% endif %};">{{ week.special_recommendation }}</small>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </tbody>
                                 </table>
                             </div>
                         </div>
-                        <div class="col-md-6">
-                            <h4>Analysis & Recommendation</h4>
-                            <div class="analysis-section">
-                                <h5>Current Status:</h5>
-                                <p id="selectedStatus" class="{% if analysis.current_week_data.distance > 0 %}text-success{% else %}text-danger{% endif %}">
-                                    {% if analysis.current_week_data.distance > 0 %}
-                                        {% if analysis.previous_week_data and analysis.previous_week_data.distance <= 0 %}
-                                            <strong>Golden Cross Alert!</strong> MACD has crossed above the signal line.
-                                        {% else %}
-                                            Bullish trend continuing. MACD remains above signal line.
-                                        {% endif %}
-                                    {% else %}
-                                        {% if analysis.previous_week_data and analysis.previous_week_data.distance > 0 %}
-                                            <strong>Death Cross Alert!</strong> MACD has crossed below the signal line.
-                                        {% else %}
-                                            Bearish trend continuing. MACD remains below signal line.
-                                        {% endif %}
-                                    {% endif %}
-                                </p>
-                                <h5>Recommendation:</h5>
-                                <p id="selectedRecommendation" class="{% if analysis.current_week_data.distance > 0 %}text-success{% else %}text-danger{% endif %}">
-                                    {% if analysis.current_week_data.distance > 0 %}
-                                        {% if analysis.previous_week_data and analysis.previous_week_data.distance <= 0 %}
-                                            Consider entering a long position as momentum is shifting bullish.
-                                        {% else %}
-                                            Maintain long positions as the bullish trend continues.
-                                        {% endif %}
-                                    {% else %}
-                                        {% if analysis.previous_week_data and analysis.previous_week_data.distance > 0 %}
-                                            Consider exiting long positions as momentum is shifting bearish.
-                                        {% else %}
-                                            Maintain short positions or stay on the sidelines as the bearish trend continues.
-                                        {% endif %}
-                                    {% endif %}
-                                </p>
-                            </div>
-                        </div>
                     </div>
-                </div>
-            </div>
-
-            <!-- Historical Analysis -->
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h3 class="mb-0">Historical Analysis (2024-2025)</h3>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-striped">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Price</th>
-                                    <th>MACD</th>
-                                    <th>Signal</th>
-                                    <th>Distance</th>
-                                    <th>Trend</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for week in weekly_data %}
-                                    {% if week.monday_date.startswith('2024') or week.monday_date.startswith('2025') %}
-                                    <tr class="historical-row" 
-                                        data-index="{{ loop.index0 }}"
-                                        data-date="{{ week.monday_date }}"
-                                        data-price="{{ week.price }}"
-                                        data-macd="{{ week.macd }}"
-                                        data-signal="{{ week.signal }}"
-                                        data-distance="{{ week.distance }}"
-                                        {% if week.is_reversal or week.market_message or week.special_recommendation %}
-                                            {% if week.highlight_color == 'lightgreen' %}
-                                                style="background-color: var(--light-green);"
-                                            {% elif week.highlight_color == 'lightred' %}
-                                                style="background-color: var(--light-red);"
-                                            {% elif week.highlight_color == 'lightyellow' %}
-                                                style="background-color: var(--light-yellow);"
-                                            {% endif %}
-                                        {% endif %}>
-                                        <td>{{ week.monday_date }}</td>
-                                        <td>${{ "%.2f"|format(week.price) }}</td>
-                                        <td>{{ "%.4f"|format(week.macd) }}</td>
-                                        <td>{{ "%.4f"|format(week.signal) }}</td>
-                                        <td>{{ "%.4f"|format(week.distance) }}</td>
-                                        <td>
-                                            {{ week.trend }}
-                                            {% if week.market_message %}
-                                                <br><small style="color: {% if week.trend == 'Bullish' %}#00D632{% else %}#FF3B30{% endif %}; font-weight: bold; font-size: 1.1em;">{{ week.market_message }}</small>
-                                            {% elif week.special_recommendation %}
-                                                <br><small style="color: {% if week.highlight_color == 'lightgreen' %}#00D632{% elif week.highlight_color == 'lightred' %}#FF3B30{% else %}#6E6E73{% endif %};">{{ week.special_recommendation }}</small>
-                                            {% endif %}
-                                        </td>
-                                    </tr>
-                                    {% endif %}
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        {% endif %}
-    {% endif %}
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+function showBasicMode() {
+    console.log('Showing basic mode');
+    document.getElementById('basicMode').classList.add('active');
+    document.getElementById('advancedMode').classList.remove('active');
+    document.getElementById('indicatorSelector').style.display = 'flex';
+    
+    // Show preset thresholds, hide advanced options
+    document.querySelectorAll('.preset-thresholds').forEach(el => el.style.display = 'block');
+    document.querySelectorAll('.advanced-options').forEach(el => el.style.display = 'none');
+    
+    // Reset checkboxes
+    document.querySelectorAll('input[name="indicator"]').forEach(cb => {
+        cb.checked = false;
+        document.getElementById(`${cb.value}-params`).style.display = 'none';
+    });
+    
+    // Reset action button
+    document.getElementById('actionBtn').disabled = true;
+    document.getElementById('actionBtn').innerHTML = '<i class="fas fa-chart-line"></i><span>Select an Indicator</span>';
+}
+
+function showAdvancedMode() {
+    console.log('Showing advanced mode');
+    document.getElementById('advancedMode').classList.add('active');
+    document.getElementById('basicMode').classList.remove('active');
+    document.getElementById('indicatorSelector').style.display = 'flex';
+    
+    // Show advanced options, hide preset thresholds
+    document.querySelectorAll('.preset-thresholds').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.advanced-options').forEach(el => el.style.display = 'block');
+    
+    // Reset checkboxes
+    document.querySelectorAll('input[name="indicator"]').forEach(cb => {
+        cb.checked = false;
+        document.getElementById(`${cb.value}-params`).style.display = 'none';
+    });
+    
+    // Reset action button
+    document.getElementById('actionBtn').disabled = true;
+    document.getElementById('actionBtn').innerHTML = '<i class="fas fa-chart-line"></i><span>Select an Indicator</span>';
+}
+
+function handleIndicatorChange(checkbox) {
+    console.log('Indicator changed:', checkbox.value, checkbox.checked);
+    const params = document.getElementById(`${checkbox.value}-params`);
+    if (params) {
+        params.style.display = checkbox.checked ? 'block' : 'none';
+    }
+    
+    // Update action button
+    const selectedCount = document.querySelectorAll('input[name="indicator"]:checked').length;
+    const actionBtn = document.getElementById('actionBtn');
+    
+    if (selectedCount === 0) {
+        actionBtn.disabled = true;
+        actionBtn.innerHTML = '<i class="fas fa-chart-line"></i><span>Select an Indicator</span>';
+    } else {
+        actionBtn.disabled = false;
+        const selectedIndicators = Array.from(document.querySelectorAll('input[name="indicator"]:checked'))
+            .map(cb => cb.value.toUpperCase());
+        
+        if (selectedCount === 1) {
+            actionBtn.innerHTML = `<i class="fas fa-chart-line"></i><span>Analyze ${selectedIndicators[0]}</span>`;
+        } else {
+            actionBtn.innerHTML = `<i class="fas fa-chart-line"></i><span>Analyze ${selectedIndicators.join(' + ')}</span>`;
+        }
+    }
+}
+
+function handleAnalysisAction() {
+    const selectedIndicators = Array.from(document.querySelectorAll('input[name="indicator"]:checked'))
+        .map(cb => cb.value);
+    
+    if (selectedIndicators.length > 0) {
+        // Show coin selector at the top
+        const coinSelector = document.getElementById('coinSelector');
+        coinSelector.style.display = 'flex';
+        
+        // Show analysis section
+        document.getElementById('analysisSection').style.display = 'block';
+        
+        // Hide mode selector and indicator selector
+        document.getElementById('modeSelector').style.display = 'none';
+        document.getElementById('indicatorSelector').style.display = 'none';
+        
+        // Show back button
+        document.getElementById('backBtn').style.display = 'flex';
+
+        // Check if only MACD is selected
+        if (selectedIndicators.length === 1 && selectedIndicators.includes('macd')) {
+            // Show MACD analysis
+            document.getElementById('analysisContent').style.display = 'block';
+            document.getElementById('featureComingSoon').style.display = 'none';
+            
+            // Show MACD chart and analysis sections
+            document.querySelector('.card.mb-4').style.display = 'block';  // MACD Chart
+            document.getElementById('currentWeekCard').style.display = 'block';  // Current Week Analysis
+            document.querySelector('.card.mb-4:last-child').style.display = 'block';  // Historical Analysis
+        } else {
+            // Show coming soon message for multiple indicators or non-MACD indicators
+            document.getElementById('analysisContent').style.display = 'none';
+            document.getElementById('featureComingSoon').style.display = 'block';
+            
+            // Update coming soon message based on selection
+            const featureComingSoon = document.getElementById('featureComingSoon');
+            if (selectedIndicators.length > 1) {
+                featureComingSoon.querySelector('h3').textContent = 'Multiple Indicators Coming Soon!';
+                featureComingSoon.querySelector('p').textContent = `We're working on bringing you the ability to analyze ${selectedIndicators.map(i => i.toUpperCase()).join(' + ')} together for more powerful analysis.`;
+            } else {
+                featureComingSoon.querySelector('h3').textContent = `${selectedIndicators[0].toUpperCase()} Analysis Coming Soon!`;
+                featureComingSoon.querySelector('p').textContent = `We're working on bringing you ${selectedIndicators[0].toUpperCase()} analysis. Stay tuned for updates!`;
+            }
+        }
+    }
+}
+
+// Add back button functionality
+document.getElementById('backBtn').addEventListener('click', function() {
+    // Reset page title
+    document.getElementById('pageTitle').textContent = 'Technical Analysis';
+    
+    // Hide all sections except mode selector
+    document.getElementById('analysisSection').style.display = 'none';
+    document.getElementById('coinSelector').style.display = 'none';
+    document.getElementById('modeSelector').style.display = 'flex';
+    document.getElementById('indicatorSelector').style.display = 'none';
+    document.getElementById('backBtn').style.display = 'none';
+    
+    // Reset mode buttons
+    document.getElementById('basicMode').classList.remove('active');
+    document.getElementById('advancedMode').classList.remove('active');
+    
+    // Reset checkboxes and their parameters
+    document.querySelectorAll('input[name="indicator"]').forEach(cb => {
+        cb.checked = false;
+        const params = document.getElementById(`${cb.value}-params`);
+        if (params) {
+            params.style.display = 'none';
+            // Reset advanced options visibility
+            const advancedOptions = params.querySelector('.advanced-options');
+            if (advancedOptions) {
+                advancedOptions.style.display = 'none';
+            }
+            // Reset preset thresholds visibility
+            const presetThresholds = params.querySelector('.preset-thresholds');
+            if (presetThresholds) {
+                presetThresholds.style.display = 'none';
+            }
+        }
+    });
+    
+    // Reset action button
+    const actionBtn = document.getElementById('actionBtn');
+    actionBtn.disabled = true;
+    actionBtn.innerHTML = '<i class="fas fa-chart-line"></i><span>Select an Indicator</span>';
+    
+    // Clear analysis content
+    document.getElementById('analysisContent').innerHTML = '';
+    
+    // Reset selected indicators list
+    const selectedIndicators = document.querySelector('.selected-indicators');
+    if (selectedIndicators) {
+        selectedIndicators.style.display = 'none';
+    }
+    
+    // Reset feature coming soon message
+    const featureComingSoon = document.getElementById('featureComingSoon');
+    if (featureComingSoon) {
+        featureComingSoon.style.display = 'none';
+    }
+    
+    // Reset coin buttons
+    document.querySelectorAll('.coin-btn').forEach(btn => {
+        btn.classList.remove('active');
+        btn.classList.remove('reloading');
+    });
+});
+
+// Add coin button click handlers
+document.querySelectorAll('.coin-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        // Remove active class from all buttons
+        document.querySelectorAll('.coin-btn').forEach(b => b.classList.remove('active'));
+        // Add active class to clicked button
+        this.classList.add('active');
+        
+        // Add loading state
+        this.classList.add('reloading');
+        
+        // Get the selected coin
+        const selectedCoin = this.dataset.coin;
+        
+        // Update the page title
+        document.getElementById('pageTitle').textContent = `${selectedCoin} Technical Analysis`;
+        
+        // Check if it's a stablecoin
+        const stablecoins = ['USDT', 'USDC', 'DAI', 'BUSD', 'TUSD', 'USDP', 'USDD', 'FRAX', 'GUSD', 'LUSD', 'MIM', 'USTC', 'USN', 'USDK', 'USDS', 'USDTZ', 'USX', 'USDT+', 'USDT.e', 'USDC.e', 'DAI.e'];
+        
+        // Hide all analysis sections first
+        const analysisContent = document.getElementById('analysisContent');
+        const macdChart = document.querySelector('.card.mb-4');
+        const currentWeekCard = document.getElementById('currentWeekCard');
+        const historicalAnalysis = document.querySelector('.card.mb-4:last-child');
+        
+        if (macdChart) macdChart.style.display = 'none';
+        if (currentWeekCard) currentWeekCard.style.display = 'none';
+        if (historicalAnalysis) historicalAnalysis.style.display = 'none';
+        
+        if (stablecoins.includes(selectedCoin)) {
+            // Show stablecoin message
+            analysisContent.style.display = 'block';
+            analysisContent.innerHTML = `
+                <div class="stablecoin-message">
+                    <h3>🤔 Analyzing ${selectedCoin}...</h3>
+                    <p class="lead">Wait a minute... This is a stablecoin! 🤦‍♂️</p>
+                    <p>Technical analysis for ${selectedCoin} is like trying to predict the weather in a climate-controlled room.</p>
+                    <p>It's always $1.00, just like my bank account after paying rent! 😅</p>
+                    <p>Maybe try analyzing a coin that actually moves? Just a suggestion! 😉</p>
+                    <img src="https://media.giphy.com/media/3o7TKSjRrfIPjeiVyM/giphy.gif" alt="Stablecoin Meme" class="img-fluid rounded">
+                </div>
+            `;
+        } else {
+            // Make an API call to get the data for the selected coin
+            fetch(`/macd_analysis_copy?coin=${selectedCoin}`, {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    console.error('Error:', data.error);
+                    return;
+                }
+                
+                // Show analysis section
+                document.getElementById('analysisSection').style.display = 'block';
+                
+                // Update the analysis content with new data
+                if (data.analysis && data.analysis.current_week_data) {
+                    // Show all analysis sections
+                    if (macdChart) macdChart.style.display = 'block';
+                    if (currentWeekCard) currentWeekCard.style.display = 'block';
+                    if (historicalAnalysis) historicalAnalysis.style.display = 'block';
+                    
+                    // Update current week data
+                    document.getElementById('selectedDate').textContent = data.analysis.current_week_data.date_formatted;
+                    document.getElementById('selectedPrice').textContent = '$' + data.analysis.current_week_data.price.toFixed(2);
+                    document.getElementById('selectedMACD').textContent = data.analysis.current_week_data.macd.toFixed(4);
+                    document.getElementById('selectedSignal').textContent = data.analysis.current_week_data.signal.toFixed(4);
+                    document.getElementById('selectedDistance').textContent = data.analysis.current_week_data.distance.toFixed(4);
+                    
+                    // Update trend badge
+                    const trendElement = document.getElementById('selectedTrend');
+                    trendElement.textContent = data.analysis.current_week_data.distance > 0 ? 'Bullish' : 'Bearish';
+                    trendElement.className = 'badge ' + (data.analysis.current_week_data.distance > 0 ? 'bg-success' : 'bg-danger');
+                    
+                    // Update status and recommendation
+                    const statusElement = document.getElementById('selectedStatus');
+                    const recommendationElement = document.getElementById('selectedRecommendation');
+                    
+                    if (data.analysis.current_week_data.distance > 0) {
+                        if (data.analysis.previous_week_data && data.analysis.previous_week_data.distance <= 0) {
+                            statusElement.innerHTML = '<strong>Golden Cross Alert!</strong> MACD has crossed above the signal line.';
+                            recommendationElement.textContent = 'Consider entering a long position as momentum is shifting bullish.';
+                        } else {
+                            statusElement.textContent = 'Bullish trend continuing. MACD remains above signal line.';
+                            recommendationElement.textContent = 'Maintain long positions as the bullish trend continues.';
+                        }
+                    } else {
+                        if (data.analysis.previous_week_data && data.analysis.previous_week_data.distance > 0) {
+                            statusElement.innerHTML = '<strong>Death Cross Alert!</strong> MACD has crossed below the signal line.';
+                            recommendationElement.textContent = 'Consider exiting long positions as momentum is shifting bearish.';
+                        } else {
+                            statusElement.textContent = 'Bearish trend continuing. MACD remains below signal line.';
+                            recommendationElement.textContent = 'Maintain short positions or stay on the sidelines as the bearish trend continues.';
+                        }
+                    }
+                    
+                    // Update text colors based on trend
+                    statusElement.className = data.analysis.current_week_data.distance > 0 ? 'text-success' : 'text-danger';
+                    recommendationElement.className = data.analysis.current_week_data.distance > 0 ? 'text-success' : 'text-danger';
+                    
+                    // Update chart data
+                    const chart = Chart.getChart('macdChart');
+                    if (chart) {
+                        chart.data.labels = data.weekly_data.map(week => week.date_formatted);
+                        chart.data.datasets[0].data = data.weekly_data.map(week => week.macd);
+                        chart.data.datasets[1].data = data.weekly_data.map(week => week.signal);
+                        chart.data.datasets[2].data = data.weekly_data.map(week => week.distance);
+                        chart.update();
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+        
+        // Remove loading state
+        this.classList.remove('reloading');
+    });
+});
+
+// Initialize page
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM Content Loaded');
+    // Hide all sections except mode selector initially
+    document.getElementById('indicatorSelector').style.display = 'none';
+    document.getElementById('coinSelector').style.display = 'none';
+    document.getElementById('analysisSection').style.display = 'none';
+    document.getElementById('backBtn').style.display = 'none';
+    
+    // Remove initial active class from basic mode
+    document.getElementById('basicMode').classList.remove('active');
+
     {% if analysis and analysis.current_week_data %}
     console.log('Analysis data available');
     const weeklyData = JSON.parse('{{ weekly_data|tojson|safe }}');
@@ -257,18 +1082,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const currentCoin = '{{ current_coin }}';
     console.log('Current Coin:', currentCoin);
     
-    // Add click handlers to coin selector buttons
-    document.querySelectorAll('.coin-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const selectedCoin = this.dataset.coin;
-            console.log('Coin selected:', selectedCoin);
-            if (selectedCoin !== currentCoin) {
-                // Update URL with selected coin
-                window.location.href = `/macd_analysis_copy?coin=${selectedCoin}`;
-            }
-        });
-    });
-
     // Filter data for 2024 and 2025
     const filteredData = weeklyData.filter(week => {
         const date = new Date(week.monday_date);
@@ -400,6 +1213,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Add click handlers to historical rows
+    function addHistoricalRowClickHandlers() {
     document.querySelectorAll('.historical-row').forEach(row => {
         row.addEventListener('click', function() {
             const date = this.dataset.date;
@@ -409,21 +1223,27 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+    }
 
     // Function to update Selected Week Analysis
     function updateSelectedWeekAnalysis(weekData) {
+        console.log('Updating analysis for week:', weekData);
+        
         // Update selected week information
         document.getElementById('selectedDate').textContent = weekData.date_formatted;
         document.getElementById('selectedPrice').textContent = '$' + weekData.price.toFixed(2);
         document.getElementById('selectedMACD').textContent = weekData.macd.toFixed(4);
         document.getElementById('selectedSignal').textContent = weekData.signal.toFixed(4);
         document.getElementById('selectedDistance').textContent = weekData.distance.toFixed(4);
-        document.getElementById('selectedTrend').textContent = weekData.distance > 0 ? 'Bullish' : 'Bearish';
+        
+        // Update trend badge
+        const trendElement = document.getElementById('selectedTrend');
+        trendElement.textContent = weekData.distance > 0 ? 'Bullish' : 'Bearish';
+        trendElement.className = 'badge ' + (weekData.distance > 0 ? 'bg-success' : 'bg-danger');
 
         // Find the current week's index and previous weeks
         const currentIndex = weeklyData.findIndex(w => w.monday_date === weekData.monday_date);
         const previousWeek = currentIndex > 0 ? weeklyData[currentIndex - 1] : null;
-        const previousPrevWeek = currentIndex > 1 ? weeklyData[currentIndex - 2] : null;
 
         // Update status and recommendation based on trend and momentum
         const statusElement = document.getElementById('selectedStatus');
@@ -459,6 +1279,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
+        // Update the elements with new content
         statusElement.innerHTML = status;
         recommendationElement.textContent = recommendation;
         
@@ -466,11 +1287,23 @@ document.addEventListener('DOMContentLoaded', function() {
         statusElement.className = distance > 0 ? 'text-success' : 'text-danger';
         recommendationElement.className = distance > 0 ? 'text-success' : 'text-danger';
         
+        // Scroll to the analysis section
         document.getElementById('currentWeekCard').scrollIntoView({ behavior: 'smooth' });
     }
 
-    // Initialize with current week data
-    updateSelectedWeekAnalysis(currentWeekData);
+    // Add click handler for chart points
+    chart.options.onClick = function(event, elements) {
+        if (elements && elements.length > 0) {
+            const index = elements[0].index;
+            const weekData = weeklyData[index];
+            if (weekData) {
+                updateSelectedWeekAnalysis(weekData);
+            }
+        }
+    };
+
+    // Initialize click handlers for initial historical rows
+    addHistoricalRowClickHandlers();
     {% else %}
     // Handle case when there's no data
     document.getElementById('macd-chart').innerHTML = '<div class="alert alert-warning">No data available for analysis</div>';
