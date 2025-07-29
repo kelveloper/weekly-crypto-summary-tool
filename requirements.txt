@@ -2,6 +2,18 @@ Flask==3.0.2
 Flask-SQLAlchemy==3.1.1
 Flask-Login==0.6.3
 Flask-WTF==1.2.1
+Flask-CORS==4.0.0
 python-dotenv==1.0.1
 Werkzeug==3.0.1
-pandas==2.2.1 
+pandas==2.2.1
+PyJWT==2.10.1
+ta==0.11.0
+
+# Optional: For PostgreSQL support
+# psycopg2-binary==2.9.9
+
+# Optional: For MySQL support  
+# PyMySQL==1.1.0
+
+# For production deployment
+gunicorn==21.2.0 

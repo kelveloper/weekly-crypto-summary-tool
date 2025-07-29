@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  # API Backend
+  api:
+    build: .
+    ports:
+      - "5001:5001"
+    environment:
+      - FLASK_ENV=production
+      - DB_PATH=/data/crypto.db
+      - SECRET_KEY=your-super-secret-key-change-in-production
+      - JWT_SECRET_KEY=your-jwt-secret-key-change-in-production
+      - CORS_ORIGINS=http://localhost:3000
+    volumes:
+      # Persistent volume for SQLite database
+      - crypto_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # React Frontend (optional - can be deployed separately)
+  frontend:
+    build: ./crypto-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:5001
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # PostgreSQL Database (optional - for production)
+  # postgres:
+  #   image: postgres:15
+  #   environment:
+  #     POSTGRES_DB: crypto_db
+  #     POSTGRES_USER: crypto_user
+  #     POSTGRES_PASSWORD: your_secure_password
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+
+volumes:
+  crypto_data:  # Persistent volume for SQLite database
+  # postgres_data:  # Uncomment if using PostgreSQL 
